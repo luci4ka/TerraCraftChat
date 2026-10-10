@@ -1,13 +1,66 @@
 chat:
   prefix: "<gray>[<gold>TerraCraftChat<gray>] <reset>"
+
+  # ===== /msg, /reply =====
   player-not-found: "<red>Player <white><player> <red>not found."
   cannot-message-self: "<red>You cannot message yourself."
   target-ignoring-you: "<red>This player is ignoring your messages."
   you-ignoring-target: "<red>You are ignoring this player. Use /ignore <player> to stop."
   no-reply-target: "<red>You have no one to reply to."
+
+  # ===== Ignore =====
   ignore-enabled: "<gray>You no longer see messages from <white><player><gray>."
   ignore-disabled: "<gray>You now see messages from <white><player><gray> again."
   already-ignored: "<red>Player <white><player> <red>is already in your ignore list."
   not-ignored: "<red>Player <white><player> <red>is not in your ignore list."
+  cannot-ignore-self: "<red>You cannot ignore yourself."
+
+  # ===== Common =====
   no-permission: "<red>You don't have permission to do this."
   config-reloaded: "<green>Configuration reloaded."
+
+  # ===== Social spy =====
+  socialspy-enabled: "<green>Social spy enabled. You now see all private messages."
+  socialspy-disabled: "<red>Social spy disabled."
+
+  # ===== Moderation =====
+  cooldown: "<red>Wait <white><seconds> <red>sec. before your next message."
+  duplicate: "<red>Don't spam the same message!"
+  similar: "<red>Don't spam similar messages!"
+  flood: "<red>Too many repeating characters!"
+  crash: "<red>Message contains invalid characters."
+  swear: "<red>Please don't use profanity."
+  anti-ad: "<red>Advertising is not allowed!"
+  thread-active: "<green>Reply mode enabled. Your next message will go to the thread."
+  thread-limit: "<red>Thread reply limit reached."
+  reaction-invalid: "<red>Invalid reaction."
+  thread-button-hover: "<gray>Reply in thread"
+  thread-more: "<dark_gray>... <count> more replies"
+  thread-replied: "<dark_gray>replied to <target>"
+
+  # ===== [inv] and [item] =====
+  inv-self-not-allowed: "<red>You can't view your own inventory through [inv]."
+  item-hand-empty: "<gray>empty"
+  inv-label: "<aqua>[Inventory]</aqua>"
+  inv-hover: "<gray>Click to view <white><player></white>'s inventory"
+  delete-button-hover: "<red>Delete this message"
+  delete-notice: "<red>--- Message from <sender> deleted by <moderator> ---"
+
+autobroadcast:
+  rules: "<yellow>Don't forget to read the rules: <white>/rules"
+  discord: "<yellow>Our Discord: <white>discord.gg/terracraft"
+  donate: "<yellow>Buy donates: <white>/donate"
+
+chatgames:
+  unscramble:
+    start: "<gold>[Game] <yellow>Unscramble the word: <white><word>"
+    win: "<green>[Game] <yellow><player> <green>guessed the word <white><answer> <green>in <time> sec!"
+    timeout: "<red>[Game] Nobody guessed. The word was: <white><answer>"
+  quiz:
+    start: "<gold>[Quiz] <yellow><word>"
+    win: "<green>[Quiz] <yellow><player> <green>answered: <white><answer> <green>(<time> sec)"
+    timeout: "<red>[Quiz] Nobody answered. Correct answer: <white><answer>"
+  math:
+    start: "<gold>[Math] <yellow>Solve: <white><word>"
+    win: "<green>[Math] <yellow><player> <green>answered: <white><answer> <green>(<time> sec)"
+    timeout: "<red>[Math] Nobody solved. Answer: <white><answer>"

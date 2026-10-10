@@ -1,0 +1,23 @@
+# Кастомные эмодзи для чата.
+# Формат: код: значение
+# Значение может быть:
+#   - Unicode-символ: "☺"
+#   - MiniMessage-тег: "<sprite:items:item/diamond>"
+#   - Любая комбинация: "<red>❤</red>"
+# В чате игрок пишет :код: и получает эмодзи.
+
+smile: "☺"
+heart: "<red>❤</red>"
+star: "<yellow>★</yellow>"
+skull: "☠"
+diamond: "<sprite:items:item/diamond>"
+emerald: "<sprite:items:item/emerald>"
+gold: "<sprite:items:item/gold_ingot>"
+netherite: "<sprite:items:item/netherite_ingot>"
+sword: "<sprite:items:item/netherite_sword>"
+pickaxe: "<sprite:items:item/netherite_pickaxe>"
+heart_item: "<sprite:items:item/heart_of_the_sea>"
+fire: "🔥"
+check: "<green>✔</green>"
+cross: "<red>✘</red>"
+arrow: "➤"

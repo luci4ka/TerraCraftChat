@@ -1,13 +1,66 @@
 chat:
   prefix: "<gray>[<gold>TerraCraftChat<gray>] <reset>"
+
+  # ===== /msg, /reply =====
   player-not-found: "<red>Spieler <white><player> <red>nicht gefunden."
   cannot-message-self: "<red>Du kannst dir selbst keine Nachricht senden."
   target-ignoring-you: "<red>Dieser Spieler ignoriert deine Nachrichten."
   you-ignoring-target: "<red>Du ignorierst diesen Spieler. Nutze /ignore <player>, um aufzuhören."
   no-reply-target: "<red>Du hast niemanden, dem du antworten kannst."
+
+  # ===== Ignorieren =====
   ignore-enabled: "<gray>Du siehst keine Nachrichten mehr von <white><player><gray>."
   ignore-disabled: "<gray>Du siehst wieder Nachrichten von <white><player><gray>."
   already-ignored: "<red>Spieler <white><player> <red>ist bereits in deiner Ignorierliste."
   not-ignored: "<red>Spieler <white><player> <red>ist nicht in deiner Ignorierliste."
+  cannot-ignore-self: "<red>Du kannst dich nicht selbst ignorieren."
+
+  # ===== Allgemein =====
   no-permission: "<red>Du hast keine Berechtigung dafür."
   config-reloaded: "<green>Konfiguration neu geladen."
+
+  # ===== Social-Spy =====
+  socialspy-enabled: "<green>Social-Spy aktiviert. Du siehst jetzt alle privaten Nachrichten."
+  socialspy-disabled: "<red>Social-Spy deaktiviert."
+
+  # ===== Moderation =====
+  cooldown: "<red>Warte <white><seconds> <red>Sek. vor deiner nächsten Nachricht."
+  duplicate: "<red>Spamme nicht dieselbe Nachricht!"
+  similar: "<red>Spamme nicht mit ähnlichen Nachrichten!"
+  flood: "<red>Zu viele wiederholte Zeichen!"
+  crash: "<red>Nachricht enthält ungültige Zeichen."
+  swear: "<red>Bitte verwende keine vulgäre Sprache."
+  anti-ad: "<red>Werbung ist nicht erlaubt!"
+  thread-active: "<green>Antwortmodus aktiviert. Deine nächste Nachricht geht in den Thread."
+  thread-limit: "<red>Maximale Anzahl an Thread-Antworten erreicht."
+  reaction-invalid: "<red>Ungültige Reaktion."
+  thread-button-hover: "<gray>Im Thread antworten"
+  thread-more: "<dark_gray>... <count> weitere Antworten"
+  thread-replied: "<dark_gray>antwortete <target>"
+
+  # ===== [inv] und [item] =====
+  inv-self-not-allowed: "<red>Du kannst dein eigenes Inventar nicht über [inv] ansehen."
+  item-hand-empty: "<gray>leer"
+  inv-label: "<aqua>[Inventar]</aqua>"
+  inv-hover: "<gray>Klicke, um das Inventar von <white><player></white> zu sehen"
+  delete-button-hover: "<red>Diese Nachricht löschen"
+  delete-notice: "<red>--- Nachricht von <sender> gelöscht von <moderator> ---"
+
+autobroadcast:
+  rules: "<yellow>Vergiss nicht die Regeln zu lesen: <white>/rules"
+  discord: "<yellow>Unser Discord: <white>discord.gg/terracraft"
+  donate: "<yellow>Spenden kaufen: <white>/donate"
+
+chatgames:
+  unscramble:
+    start: "<gold>[Spiel] <yellow>Entwirre das Wort: <white><word>"
+    win: "<green>[Spiel] <yellow><player> <green>hat das Wort <white><answer> <green>in <time> Sek. erraten!"
+    timeout: "<red>[Spiel] Niemand hat geraten. Das Wort war: <white><answer>"
+  quiz:
+    start: "<gold>[Quiz] <yellow><word>"
+    win: "<green>[Quiz] <yellow><player> <green>antwortete: <white><answer> <green>(<time> Sek.)"
+    timeout: "<red>[Quiz] Niemand hat geantwortet. Richtige Antwort: <white><answer>"
+  math:
+    start: "<gold>[Mathe] <yellow>Löse: <white><word>"
+    win: "<green>[Mathe] <yellow><player> <green>antwortete: <white><answer> <green>(<time> Sek.)"
+    timeout: "<red>[Mathe] Niemand hat gelöst. Antwort: <white><answer>"

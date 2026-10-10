@@ -1,4 +1,7 @@
-package ru.net.terracraft.chat;
+package ru.net.terracraft.chat.game;
 
-public class GameType {
+public enum GameType {
+    UNSCRAMBLE,
+    QUIZ,
+    MATH
 }

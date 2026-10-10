@@ -1,14 +1,66 @@
 chat:
   prefix: "<gray>[<gold>TerraCraftChat<gray>] <reset>"
+
+  # ===== Команды /msg, /reply =====
   player-not-found: "<red>Игрок <white><player> <red>не найден."
   cannot-message-self: "<red>Нельзя отправить сообщение самому себе."
   target-ignoring-you: "<red>Этот игрок игнорирует ваши сообщения."
   you-ignoring-target: "<red>Вы игнорируете этого игрока. Используйте /ignore <player>, чтобы перестать."
   no-reply-target: "<red>У вас нет собеседника для ответа."
+
+  # ===== Игнор =====
   ignore-enabled: "<gray>Вы больше не видите сообщения игрока <white><player><gray>."
   ignore-disabled: "<gray>Вы снова видите сообщения игрока <white><player><gray>."
   already-ignored: "<red>Игрок <white><player> <red>уже в вашем игнор-листе."
   not-ignored: "<red>Игрока <white><player> <red>нет в вашем игнор-листе."
+  cannot-ignore-self: "<red>Нельзя игнорировать самого себя."
+
+  # ===== Общие =====
   no-permission: "<red>У вас нет прав на это действие."
   config-reloaded: "<green>Конфигурация перезагружена."
-  cannot-ignore-self: "<red>Нельзя игнорировать самого себя."
+
+  # ===== Соц-шпион =====
+  socialspy-enabled: "<green>Режим соц-шпиона включён. Вы видите все ЛС."
+  socialspy-disabled: "<red>Режим соц-шпиона выключен."
+
+  # ===== Модерация =====
+  cooldown: "<red>Подожди <white><seconds> <red>сек. перед следующим сообщением."
+  duplicate: "<red>Не спамь одинаковыми сообщениями!"
+  similar: "<red>Не спамь похожими сообщениями!"
+  flood: "<red>Слишком много повторяющихся символов!"
+  crash: "<red>Сообщение содержит недопустимые символы."
+  swear: "<red>Пожалуйста, не используй нецензурную лексику."
+  anti-ad: "<red>Реклама запрещена!"
+  thread-active: "<green>Режим ответа включён. Следующее сообщение уйдёт в тред."
+  thread-limit: "<red>Достигнут лимит ответов в треде."
+  reaction-invalid: "<red>Недопустимая реакция."
+  thread-button-hover: "<gray>Ответить в тред"
+  thread-more: "<dark_gray>... ещё <count> ответов"
+  thread-replied: "<dark_gray>ответил <target>"
+
+  # ===== [inv] и [item] =====
+  inv-self-not-allowed: "<red>Нельзя смотреть свой инвентарь через [inv]."
+  item-hand-empty: "<gray>пусто"
+  inv-label: "<aqua>[Инвентарь]</aqua>"
+  inv-hover: "<gray>Нажми, чтобы посмотреть инвентарь <white><player></white>"
+  delete-button-hover: "<red>Удалить это сообщение"
+  delete-notice: "<red>--- Сообщение от <sender> удалено модератором <moderator> ---"
+
+autobroadcast:
+  rules: "<yellow>Не забывай читать правила: <white>/rules"
+  discord: "<yellow>Наш Discord: <white>discord.gg/terracraft"
+  donate: "<yellow>Купить донат: <white>/donate"
+
+chatgames:
+  unscramble:
+    start: "<gold>[Игра] <yellow>Разгадай слово: <white><word>"
+    win: "<green>[Игра] <yellow><player> <green>угадал слово <white><answer> <green>за <time> сек!"
+    timeout: "<red>[Игра] Никто не угадал. Слово было: <white><answer>"
+  quiz:
+    start: "<gold>[Викторина] <yellow><word>"
+    win: "<green>[Викторина] <yellow><player> <green>ответил: <white><answer> <green>(<time> сек)"
+    timeout: "<red>[Викторина] Никто не ответил. Правильный ответ: <white><answer>"
+  math:
+    start: "<gold>[Математика] <yellow>Реши: <white><word>"
+    win: "<green>[Математика] <yellow><player> <green>ответил: <white><answer> <green>(<time> сек)"
+    timeout: "<red>[Математика] Никто не решил. Ответ: <white><answer>"

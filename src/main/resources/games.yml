@@ -1,0 +1,72 @@
+# ============================================================
+#  CHAT GAMES — контент
+# ============================================================
+#
+# Каждая игра — отдельная секция с уникальным ID.
+# type: unscramble | quiz | math
+#
+# Тип unscramble:
+#   words: список слов для перемешивания
+#   rewards: команды от консоли при победе (placeholder {player})
+#
+# Тип quiz:
+#   questions: список вопросов с ответами
+#     - question: "Текст вопроса"
+#       answers: ["ответ1", "ответ2"]  # любой из них засчитывается
+#       caseSensitive: false            # учитывать регистр
+#
+# Тип math:
+#   operations: [add, sub, mul, div]  # доступные операции
+#   minNumber: 1
+#   maxNumber: 100
+#   rewards: команды от консоли при победе
+
+# Общие настройки
+settings:
+  # Сообщения игры (используют i18n, ключ = перевод)
+  startMessage: "chatgames.unscramble.start"
+  winMessage: "chatgames.unscramble.win"
+  timeoutMessage: "chatgames.unscramble.timeout"
+
+# ============================================================
+#  ИГРЫ
+# ============================================================
+
+games:
+  unscramble:
+    type: "unscramble"
+    weight: 5                         # вес при случайном выборе
+    words:
+      - "алмаз"
+      - "наковальня"
+      - "крипер"
+      - "эндермен"
+      - "изумруд"
+      - "золото"
+      - "редстоун"
+      - "обсидиан"
+    rewards:
+      - "give {player} diamond 1"
+
+  quiz_minecraft:
+    type: "quiz"
+    weight: 3
+    questions:
+      - question: "Сколько блоков нужно для полного маяка?"
+        answers: ["164", "164 блока"]
+        caseSensitive: false
+      - question: "Какой моб взрывается?"
+        answers: ["крипер", "creeper"]
+      - question: "Что добывается из руды с помощью кирки?"
+        answers: ["камень", "руда"]
+    rewards:
+      - "give {player} emerald 3"
+
+  math_easy:
+    type: "math"
+    weight: 2
+    operations: ["add", "sub"]
+    minNumber: 1
+    maxNumber: 50
+    rewards:
+      - "give {player} iron_ingot 5"
