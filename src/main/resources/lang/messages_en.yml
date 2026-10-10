@@ -1,0 +1,13 @@
+chat:
+  prefix: "<gray>[<gold>TerraCraftChat<gray>] <reset>"
+  player-not-found: "<red>Player <white><player> <red>not found."
+  cannot-message-self: "<red>You cannot message yourself."
+  target-ignoring-you: "<red>This player is ignoring your messages."
+  you-ignoring-target: "<red>You are ignoring this player. Use /ignore <player> to stop."
+  no-reply-target: "<red>You have no one to reply to."
+  ignore-enabled: "<gray>You no longer see messages from <white><player><gray>."
+  ignore-disabled: "<gray>You now see messages from <white><player><gray> again."
+  already-ignored: "<red>Player <white><player> <red>is already in your ignore list."
+  not-ignored: "<red>Player <white><player> <red>is not in your ignore list."
+  no-permission: "<red>You don't have permission to do this."
+  config-reloaded: "<green>Configuration reloaded."
