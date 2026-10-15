@@ -80,9 +80,8 @@ public class SkinHeadCache {
     public String getHeadTag(Player player) {
         String hash = textureIdCache.get(player.getUniqueId());
         if (hash != null) {
-            return "<head:" + hash + ">";
+            return "<head:texture:" + hash + ">";
         }
-        // Fallback: Paper попробует сам разрешить профиль по имени
-        return "<head:" + player.getName() + ">";
+        return "<head:name:" + player.getName() + ">";
     }
 }
