@@ -16,7 +16,7 @@ public final class ChatConfig {
     @Comment("Форматы сообщений")
     private FormatsSection formats = new FormatsSection();
 
-    @Comment("Каналы чата (локальный/глобальный)")
+    @Comment("Каналы чата")
     private ChannelsSection channels = new ChannelsSection();
 
     @Comment("Треды (ответы на сообщения)")
@@ -58,6 +58,9 @@ public final class ChatConfig {
     @Comment("Chat Games (мини-игры)")
     private ChatGamesSection chatGames = new ChatGamesSection();
 
+    @Comment("Хранилище данных (H2 / MySQL)")
+    private StorageSection storage = new StorageSection();
+
     // ============================================================
     //  ГЕТТЕРЫ
     // ============================================================
@@ -77,6 +80,7 @@ public final class ChatConfig {
     public EmojiSection emoji() { return emoji; }
     public LocalAnswersSection localAnswers() { return localAnswers; }
     public ChatGamesSection chatGames() { return chatGames; }
+    public StorageSection storage() { return storage; }
 
     // ============================================================
     //  СЕКЦИЯ: ФОРМАТЫ
@@ -84,20 +88,35 @@ public final class ChatConfig {
 
     @Configuration
     public static final class FormatsSection {
-        @Comment("Формат локального сообщения")
+        @Comment({
+                "Доступные плейсхолдеры:",
+                "<sender_head>    — голова игрока (SkinsRestorer)",
+                "<display_name>   — ник из плагина (или реальное имя)",
+                "<sender_name>    — реальное имя игрока",
+                "<world>          — мир отправителя",
+                "<message>        — текст сообщения",
+                "{msg_command}    — /msg <ник> (для клика)",
+                "<lp_prefix> / <lp_suffix> — префикс/суффикс LuckPerms",
+                "Любые PAPI-плейсхолдеры (%player_name%, ...)",
+                "",
+                "Формат локального сообщения"
+        })
         private String local = "<gray>[<green>L<gray>] <click:suggest_command:'{msg_command}'>"
                 + "<hover:show_text:'<gray>Нажми, чтобы написать'>"
-                + "<sender_head> <display_name>"
+                + "<sender_head> <lp_prefix><display_name><lp_suffix>"
                 + "</hover></click><gray>: <reset><message>";
 
         @Comment("Формат глобального сообщения")
-        private String global = "<gray>[<gold>G<gray>] <sender_head> <display_name><gray>: <reset><message>";
+        private String global = "<gray>[<gold>G<gray>] <sender_head> <lp_prefix><display_name><lp_suffix><gray>: <reset><message>";
+
+        @Comment("Формат staff-канала. <reset> после [STAFF] — голова и ник обычного цвета")
+        private String staff = "<dark_red>[<red>STAFF<dark_red>] <reset><sender_head> <lp_prefix><display_name><lp_suffix><gray>: <reset><message>";
 
         @Comment("Формат /msg")
-        private String privateMsg = "<gray>[<gold>ЛС<gray>] <sender_head> <sender> <dark_gray>→ <receiver_head> <receiver><gray>: <white><message>";
+        private String privateMsg = "<gray>[<gold>ЛС<gray>] <sender_head> <lp_sender_prefix><sender><lp_sender_suffix> <dark_gray>→ <receiver_head> <lp_receiver_prefix><receiver><lp_receiver_suffix><gray>: <white><message>";
 
         @Comment("Формат /reply")
-        private String reply = "<gray>[<gold>ЛС<gray>] <sender_head> <sender> <dark_gray>→ <receiver_head> <receiver><gray>: <white><message>";
+        private String reply = "<gray>[<gold>ЛС<gray>] <sender_head> <lp_sender_prefix><sender><lp_sender_suffix> <dark_gray>→ <receiver_head> <lp_receiver_prefix><receiver><lp_receiver_suffix><gray>: <white><message>";
 
         @Comment("Формат /broadcast")
         private String broadcast = "<dark_gray>[<red>Объявление<dark_gray>] <white><message>";
@@ -107,10 +126,21 @@ public final class ChatConfig {
 
         public String local() { return local; }
         public String global() { return global; }
+        public String staff() { return staff; }
         public String privateMsg() { return privateMsg; }
         public String reply() { return reply; }
         public String broadcast() { return broadcast; }
         public String noOneNearby() { return noOneNearby; }
+
+        public String byKey(String key) {
+            if (key == null) return local;
+            return switch (key) {
+                case "local"  -> local;
+                case "global" -> global;
+                case "staff"  -> staff;
+                default       -> local;
+            };
+        }
     }
 
     // ============================================================
@@ -119,18 +149,62 @@ public final class ChatConfig {
 
     @Configuration
     public static final class ChannelsSection {
-        @Comment("Радиус локального чата в блоках")
-        private int localRadius = 100;
+        @Comment("Канал по умолчанию (id из channels)")
+        private String defaultChannel = "local";
 
-        @Comment("Префикс для глобального чата (например, !)")
-        private String globalPrefix = "!";
-
-        @Comment("Радиус RP-чата (0 — всем)")
+        @Comment("Радиус RP-чата (/me, /do, /try, /roll). 0 — всем.")
         private int rpRadius = 50;
 
-        public int localRadius() { return localRadius; }
-        public String globalPrefix() { return globalPrefix; }
+        @Comment({
+                "Список каналов. Ключ — id канала.",
+                "prefix     — префикс в сообщении ('!' → '!привет'; '' → без префикса)",
+                "range      — радиус в блоках (-1 = вся карта/сеть)",
+                "permission — право для доступа ('' = всем)",
+                "format     — ключ из секции formats (local / global / staff)",
+                "cooldown   — свой кулдаун в секундах (0 = общий)",
+                "public     — в Discord, бот, упоминания. Канал с permission никогда не публичный."
+        })
+        private Map<String, ChannelEntry> channels = Map.of(
+                "local",  new ChannelEntry("",  100, "",                              "local",  0, true),
+                "global", new ChannelEntry("!", -1,  "",                              "global", 0, true),
+                "staff",  new ChannelEntry("#", -1,  "terracraftchat.channel.staff",  "staff",  0, false)
+        );
+
+        public String defaultChannel() { return defaultChannel; }
         public int rpRadius() { return rpRadius; }
+        public Map<String, ChannelEntry> channels() { return channels; }
+
+        @Configuration
+        public static class ChannelEntry {
+            private String prefix = "";
+            private int range = 100;
+            private String permission = "";
+            private String format = "local";
+            private int cooldown = 0;
+
+            @Comment("Публичный канал (Discord, бот, упоминания). " +
+                    "По умолчанию false — безопасный дефолт для старых конфигов.")
+            private boolean publicChannel = false;
+
+            public ChannelEntry() {}
+
+            public ChannelEntry(String prefix, int range, String permission,
+                                String format, int cooldown, boolean publicChannel) {
+                this.prefix = prefix;
+                this.range = range;
+                this.permission = permission;
+                this.format = format;
+                this.cooldown = cooldown;
+                this.publicChannel = publicChannel;
+            }
+
+            public String prefix() { return prefix; }
+            public int range() { return range; }
+            public String permission() { return permission; }
+            public String format() { return format; }
+            public int cooldown() { return cooldown; }
+            public boolean publicChannel() { return publicChannel; }
+        }
     }
 
     // ============================================================
@@ -174,15 +248,27 @@ public final class ChatConfig {
         @Comment("Разрешить [inv] в сообщениях")
         private boolean invPlaceholderEnabled = true;
 
+        @Comment("Максимум [item] в одном сообщении")
+        private int maxItemPlaceholders = 3;
+
+        @Comment("Максимум [inv] в одном сообщении")
+        private int maxInvPlaceholders = 1;
+
         @Comment("Заголовок GUI инвентаря")
         private String invGuiTitle = "Инвентарь: <player>";
+
+        @Comment("Время жизни токена [inv] (сек)")
+        private int invTokenTtlSeconds = 60;
 
         public boolean headDisplayEnabled() { return headDisplayEnabled; }
         public int headDisplayDuration() { return headDisplayDuration; }
         public boolean showPlayerHeads() { return showPlayerHeads; }
         public boolean itemPlaceholderEnabled() { return itemPlaceholderEnabled; }
         public boolean invPlaceholderEnabled() { return invPlaceholderEnabled; }
+        public int maxItemPlaceholders() { return maxItemPlaceholders; }
+        public int maxInvPlaceholders() { return maxInvPlaceholders; }
         public String invGuiTitle() { return invGuiTitle; }
+        public int invTokenTtlSeconds() { return invTokenTtlSeconds; }
     }
 
     // ============================================================
@@ -291,13 +377,13 @@ public final class ChatConfig {
     @Configuration
     public static final class RpSection {
         @Comment("Формат /me")
-        private String meFormat = "<gray>* <white><player> <gray><message>";
+        private String meFormat = "<gray>* <white><lp_prefix><player><lp_suffix> <gray><message>";
 
         @Comment("Формат /do")
         private String doFormat = "<gray>* <message>";
 
         @Comment("Формат /try")
-        private String tryFormat = "<gray>* <white><player> <gray>попытался <message> <result>";
+        private String tryFormat = "<gray>* <white><lp_prefix><player><lp_suffix> <gray>попытался <message> <result>";
 
         @Comment("Успех /try")
         private String trySuccess = "<green>и у него получилось!";
@@ -306,7 +392,7 @@ public final class ChatConfig {
         private String tryFail = "<red>и у него не вышло...";
 
         @Comment("Формат /roll")
-        private String rollFormat = "<gray>* <white><player> <gray>бросил кубик: <yellow><result> <gray>(1-<max>)";
+        private String rollFormat = "<gray>* <white><lp_prefix><player><lp_suffix> <gray>бросил кубик: <yellow><result> <gray>(1-<max>)";
 
         public String meFormat() { return meFormat; }
         public String doFormat() { return doFormat; }
@@ -326,7 +412,7 @@ public final class ChatConfig {
         private boolean enabled = true;
 
         @Comment("Формат сообщения шпиона")
-        private String format = "<dark_gray>[<red>SPY<dark_gray>] <gray>[<white><type><gray>] <sender> <dark_gray>→ <receiver><gray>: <white><message>";
+        private String format = "<dark_gray>[<red>SPY<dark_gray>] <gray>[<white><type><gray>] <lp_sender_prefix><sender><lp_sender_suffix> <dark_gray>→ <lp_receiver_prefix><receiver><lp_receiver_suffix><gray>: <white><message>";
 
         public boolean enabled() { return enabled; }
         public String format() { return format; }
@@ -365,7 +451,11 @@ public final class ChatConfig {
         @Comment("Логировать чат в logs/chat-YYYY-MM-DD.log")
         private boolean enabled = true;
 
+        @Comment("Логировать текст личных сообщений")
+        private boolean logPrivate = false;
+
         public boolean enabled() { return enabled; }
+        public boolean logPrivate() { return logPrivate; }
     }
 
     // ============================================================
@@ -386,6 +476,9 @@ public final class ChatConfig {
         @Comment("Шаблон: %player%, %message%, %world%")
         private String format = "**[%world%] %player%:** %message%";
 
+        @Comment("Префикс для /broadcast в Discord")
+        private String broadcastPrefix = "**[Объявление]**";
+
         @Comment("Интервал отправки буфера (сек)")
         private int intervalSeconds = 5;
 
@@ -396,6 +489,7 @@ public final class ChatConfig {
         public String webhookUrl() { return webhookUrl; }
         public String username() { return username; }
         public String format() { return format; }
+        public String broadcastPrefix() { return broadcastPrefix; }
         public int intervalSeconds() { return intervalSeconds; }
         public int maxBuffer() { return maxBuffer; }
     }
@@ -452,6 +546,9 @@ public final class ChatConfig {
         @Comment("Префикс ответа")
         private String prefix = "<gray>[<gold>Бот<gray>] <reset>";
 
+        @Comment("Кулдаун между ответами бота (сек)")
+        private int cooldownSeconds = 10;
+
         @Comment("Ключ — регулярка, значение — ответ")
         private Map<String, String> answers = Map.of(
                 "как скрафтить наковальню", "3 блока железа + 4 слитка железа",
@@ -460,6 +557,7 @@ public final class ChatConfig {
 
         public boolean enabled() { return enabled; }
         public String prefix() { return prefix; }
+        public int cooldownSeconds() { return cooldownSeconds; }
         public Map<String, String> answers() { return answers; }
     }
 
@@ -489,5 +587,76 @@ public final class ChatConfig {
         public int minPlayers() { return minPlayers; }
         public int duration() { return duration; }
         public String gamesFile() { return gamesFile; }
+    }
+
+    // ============================================================
+    //  СЕКЦИЯ: STORAGE (H2 / MySQL)
+    // ============================================================
+
+    @Configuration
+    public static final class StorageSection {
+        @Comment({
+                "Тип хранилища:",
+                "  h2    — локальная файловая БД (plugins/Chat/chat.mv.db)",
+                "  mysql — внешняя БД (для сети серверов)",
+                "По умолчанию h2 — работает из коробки, без настройки."
+        })
+        private String type = "h2";
+
+        @Comment("Префикс таблиц (для мультиплагинных БД)")
+        private String tablePrefix = "tc_";
+
+        @Comment({
+                "H2 — файловая БД.",
+                "file — имя файла (без .mv.db), в папке плагина."
+        })
+        private H2Entry h2 = new H2Entry();
+
+        @Comment({
+                "MySQL — внешняя БД.",
+                "Создайте пустую БД (например, 'minecraft') и пользователя."
+        })
+        private MySQLEntry mysql = new MySQLEntry();
+
+        public String type() { return type; }
+        public String tablePrefix() { return tablePrefix; }
+        public H2Entry h2() { return h2; }
+        public MySQLEntry mysql() { return mysql; }
+
+        @Configuration
+        public static class H2Entry {
+            @Comment("Имя файла БД (без .mv.db)")
+            private String file = "chat";
+
+            public String file() { return file; }
+        }
+
+        @Configuration
+        public static class MySQLEntry {
+            @Comment("Хост")
+            private String host = "localhost";
+
+            @Comment("Порт")
+            private int port = 3306;
+
+            @Comment("Имя базы данных")
+            private String database = "minecraft";
+
+            @Comment("Пользователь")
+            private String username = "root";
+
+            @Comment("Пароль")
+            private String password = "";
+
+            @Comment("Размер пула соединений (HikariCP)")
+            private int poolSize = 10;
+
+            public String host() { return host; }
+            public int port() { return port; }
+            public String database() { return database; }
+            public String username() { return username; }
+            public String password() { return password; }
+            public int poolSize() { return poolSize; }
+        }
     }
 }

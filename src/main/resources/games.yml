@@ -5,9 +5,14 @@
 # Каждая игра — отдельная секция с уникальным ID.
 # type: unscramble | quiz | math
 #
+# Общие поля:
+#   type     — тип игры
+#   weight   — вес при случайном выборе (чем больше, тем чаще)
+#   timeout  — время на ответ (сек), 0 = глобальный из config.yml
+#   rewards  — команды от консоли при победе (placeholder {player})
+#
 # Тип unscramble:
-#   words: список слов для перемешивания
-#   rewards: команды от консоли при победе (placeholder {player})
+#   words: список слов для перемешивания (без пробелов!)
 #
 # Тип quiz:
 #   questions: список вопросов с ответами
@@ -16,41 +21,158 @@
 #       caseSensitive: false            # учитывать регистр
 #
 # Тип math:
-#   operations: [add, sub, mul, div]  # доступные операции
+#   operations: [add, sub, mul, div]
 #   minNumber: 1
 #   maxNumber: 100
-#   rewards: команды от консоли при победе
-
-# Общие настройки
-settings:
-  # Сообщения игры (используют i18n, ключ = перевод)
-  startMessage: "chatgames.unscramble.start"
-  winMessage: "chatgames.unscramble.win"
-  timeoutMessage: "chatgames.unscramble.timeout"
-
-# ============================================================
-#  ИГРЫ
-# ============================================================
 
 games:
-  unscramble:
+
+  # ============================================================
+  #  UNSCRAMBLE
+  # ============================================================
+
+  unscramble_easy:
     type: "unscramble"
-    weight: 5                         # вес при случайном выборе
+    weight: 5
+    timeout: 30
     words:
       - "алмаз"
-      - "наковальня"
-      - "крипер"
-      - "эндермен"
-      - "изумруд"
       - "золото"
-      - "редстоун"
-      - "обсидиан"
+      - "изумруд"
+      - "камень"
+      - "дерево"
+      - "песок"
+      - "земля"
+      - "вода"
+      - "лава"
+      - "огонь"
     rewards:
       - "give {player} diamond 1"
 
+  unscramble_medium:
+    type: "unscramble"
+    weight: 4
+    timeout: 30
+    words:
+      - "наковальня"
+      - "крипер"
+      - "эндермен"
+      - "редстоун"
+      - "обсидиан"
+      - "портал"
+      - "зачарование"
+      - "фермерство"
+      - "сокровище"
+      - "пирамида"
+    rewards:
+      - "give {player} emerald 2"
+
+  unscramble_hard:
+    type: "unscramble"
+    weight: 2
+    timeout: 45
+    words:
+      - "эндердракон"
+      - "исследование"
+      - "приключение"
+      - "строительство"
+      - "путешествие"
+      - "достижение"
+    rewards:
+      - "give {player} diamond 3"
+
+  unscramble_boss:
+    type: "unscramble"
+    weight: 1
+    timeout: 60
+    words:
+      - "программирование"
+      - "конфигурация"
+      - "взаимодействие"
+      - "ответственность"
+    rewards:
+      - "give {player} netherite_ingot 1"
+
+  unscramble_food:
+    type: "unscramble"
+    weight: 3
+    timeout: 30
+    words:
+      - "яблоко"
+      - "морковь"
+      - "картофель"
+      - "пшеница"
+      - "свекла"
+      - "тыква"
+      - "арбуз"
+      - "хлеб"
+      - "пирог"
+      - "печенье"
+    rewards:
+      - "give {player} apple 5"
+
+  unscramble_animals:
+    type: "unscramble"
+    weight: 3
+    timeout: 30
+    words:
+      - "свинья"
+      - "корова"
+      - "овца"
+      - "курица"
+      - "лошадь"
+      - "кот"
+      - "собака"
+      - "попугай"
+      - "черепаха"
+      - "дельфин"
+    rewards:
+      - "give {player} emerald 2"
+
+  unscramble_monsters:
+    type: "unscramble"
+    weight: 2
+    timeout: 35
+    words:
+      - "зомби"
+      - "скелет"
+      - "паук"
+      - "ведьма"
+      - "фантом"
+      - "иссушитель"
+      - "страж"
+      - "гаст"
+      - "свинозверь"
+      - "пиглин"
+    rewards:
+      - "give {player} gold_ingot 3"
+
+  unscramble_blocks:
+    type: "unscramble"
+    weight: 3
+    timeout: 30
+    words:
+      - "булыжник"
+      - "гладкокамень"
+      - "доски"
+      - "бревно"
+      - "стекло"
+      - "кирпич"
+      - "кварц"
+      - "призмарин"
+      - "незерит"
+      - "медь"
+    rewards:
+      - "give {player} iron_ingot 5"
+
+  # ============================================================
+  #  QUIZ
+  # ============================================================
+
   quiz_minecraft:
     type: "quiz"
-    weight: 3
+    weight: 5
+    timeout: 45
     questions:
       - question: "Сколько блоков нужно для полного маяка?"
         answers: ["164", "164 блока"]
@@ -59,14 +181,264 @@ games:
         answers: ["крипер", "creeper"]
       - question: "Что добывается из руды с помощью кирки?"
         answers: ["камень", "руда"]
+      - question: "Сколько сердец у игрока по умолчанию?"
+        answers: ["10", "десять"]
+      - question: "Из чего делается факел?"
+        answers: ["палка и уголь", "уголь и палка", "палка уголь", "уголь палка"]
+      - question: "Какой моб телепортируется?"
+        answers: ["эндермен", "enderman"]
+      - question: "Сколько блоков обсидиана нужно для портала в Нижний мир (минимум)?"
+        answers: ["10", "десять"]
+      - question: "Какой инструмент нужен для добычи алмазов?"
+        answers: ["железная кирка", "алмазная кирка", "незеритовая кирка", "кирка"]
     rewards:
       - "give {player} emerald 3"
 
+  quiz_geography:
+    type: "quiz"
+    weight: 3
+    timeout: 45
+    questions:
+      - question: "Столица Франции?"
+        answers: ["париж", "paris"]
+      - question: "Самая длинная река в мире?"
+        answers: ["нил", "амазонка", "nile", "amazon"]
+      - question: "Самый большой океан?"
+        answers: ["тихий", "тихий океан", "pacific"]
+      - question: "Столица Японии?"
+        answers: ["токио", "tokyo"]
+      - question: "Сколько континентов на Земле?"
+        answers: ["6", "7", "шесть", "семь"]
+      - question: "Самая высокая гора в мире?"
+        answers: ["эверест", "джомолунгма", "everest"]
+    rewards:
+      - "give {player} emerald 2"
+
+  quiz_history:
+    type: "quiz"
+    weight: 2
+    timeout: 45
+    questions:
+      - question: "В каком году началась Вторая мировая война?"
+        answers: ["1939"]
+      - question: "Кто был первым человеком в космосе?"
+        answers: ["гагарин", "юрий гагарин", "gagarin"]
+      - question: "В каком году распался СССР?"
+        answers: ["1991"]
+      - question: "Кто написал «Войну и мир»?"
+        answers: ["толстой", "лев толстой", "tolstoy"]
+      - question: "Какая страна первой высадила человека на Луну?"
+        answers: ["сша", "америка", "usa", "соединённые штаты"]
+    rewards:
+      - "give {player} gold_ingot 5"
+
+  quiz_science:
+    type: "quiz"
+    weight: 2
+    timeout: 45
+    questions:
+      - question: "Химический символ воды?"
+        answers: ["h2o", "н2о"]
+      - question: "Сколько планет в Солнечной системе?"
+        answers: ["8", "восемь"]
+      - question: "Какой газ мы вдыхаем?"
+        answers: ["кислород", "oxygen", "o2"]
+      - question: "Скорость света в км/с (округлённо)?"
+        answers: ["300000", "300 000", "триста тысяч"]
+      - question: "Какой орган качает кровь?"
+        answers: ["сердце", "heart"]
+      - question: "Самый твёрдый минерал по шкале Мооса?"
+        answers: ["алмаз", "diamond"]
+    rewards:
+      - "give {player} diamond 2"
+
+  quiz_boss:
+    type: "quiz"
+    weight: 1
+    timeout: 60
+    questions:
+      - question: "Сколько всего рецептов крафта в Minecraft (приблизительно, Java Edition)?"
+        answers: ["более 1000", ">1000", "1000+"]
+      - question: "Какое максимальное количество зачарований на одном предмете (без команд)?"
+        answers: ["5", "пять"]
+      - question: "Сколько уровней имеет маяк?"
+        answers: ["4", "четыре"]
+      - question: "Какой самый редкий моб в Minecraft (без модов)?"
+        answers: ["розовая овца", "pink sheep"]
+    rewards:
+      - "give {player} netherite_ingot 1"
+      - "give {player} diamond 5"
+
+  quiz_animals:
+    type: "quiz"
+    weight: 3
+    timeout: 40
+    questions:
+      - question: "Какое животное даёт шерсть?"
+        answers: ["овца", "sheep"]
+      - question: "Какое животное можно оседлать?"
+        answers: ["лошадь", "свинья", "horse", "pig"]
+      - question: "Какое животное даёт молоко?"
+        answers: ["корова", "cow"]
+      - question: "Какое животное можно приручить рыбой?"
+        answers: ["кот", "кошка", "cat", "ocelot"]
+      - question: "Какая птица имитирует звуки?"
+        answers: ["попугай", "parrot"]
+      - question: "Какое морское животное дружелюбно к игроку?"
+        answers: ["дельфин", "dolphin"]
+    rewards:
+      - "give {player} emerald 2"
+
+  quiz_redstone:
+    type: "quiz"
+    weight: 2
+    timeout: 45
+    questions:
+      - question: "Что нужно для работы поршня?"
+        answers: ["редстоун", "redstone", "сигнал редстоуна"]
+      - question: "Сколько тактов длится сигнал редстоуна по умолчанию?"
+        answers: ["15", "пятнадцать"]
+      - question: "Из чего делается компаратор?"
+        answers: ["кварц", "кварц и факелы редстоуна", "кварц факелы"]
+      - question: "Какой блок усиливает сигнал редстоуна?"
+        answers: ["повторитель", "repeater"]
+      - question: "Что делает наблюдатель (observer)?"
+        answers: ["издаёт сигнал при изменении блока", "детектирует изменения"]
+    rewards:
+      - "give {player} redstone 16"
+
+  quiz_nether:
+    type: "quiz"
+    weight: 2
+    timeout: 45
+    questions:
+      - question: "Какой моб охраняет крепость в Нижнем мире?"
+        answers: ["блейз", "blaze"]
+      - question: "Из чего делается незеритовый слиток?"
+        answers: ["незеритовый лом и золото", "лом и золото", "незерит и золото"]
+      - question: "Сколько блоков обсидиана нужно для портала (минимум)?"
+        answers: ["10", "десять"]
+      - question: "Какой моб ездит на курице?"
+        answers: ["маленький зомби", "бэби зомби", "baby zombie"]
+      - question: "Что нужно, чтобы активировать портал в Энд?"
+        answers: ["глаза эндера", "12 глаз эндера", "глаза эндера в рамках"]
+    rewards:
+      - "give {player} blaze_rod 4"
+
+  quiz_end:
+    type: "quiz"
+    weight: 2
+    timeout: 45
+    questions:
+      - question: "Кто финальный босс игры?"
+        answers: ["эндердракон", "дракон края", "ender dragon"]
+      - question: "Сколько кристаллов на обсидиановых столбах в Энде?"
+        answers: ["10", "десять"]
+      - question: "Что дропается с эндермена?"
+        answers: ["эндер-жемчуг", "жемчуг эндера", "ender pearl"]
+      - question: "Какой блок нужен для телепортации в Энд?"
+        answers: ["портал эндера", "end portal", "рамка портала"]
+    rewards:
+      - "give {player} ender_pearl 4"
+
+  quiz_math_trivia:
+    type: "quiz"
+    weight: 3
+    timeout: 30
+    questions:
+      - question: "Сколько будет 7 * 8?"
+        answers: ["56", "пятьдесят шесть"]
+      - question: "Сколько будет 144 / 12?"
+        answers: ["12", "двенадцать"]
+      - question: "Чему равно число Пи (2 знака)?"
+        answers: ["3.14", "3,14"]
+      - question: "Сколько градусов в прямом угле?"
+        answers: ["90", "девяносто"]
+      - question: "Сколько простых чисел до 10?"
+        answers: ["4", "четыре"]
+    rewards:
+      - "give {player} gold_ingot 3"
+
+  # ============================================================
+  #  MATH
+  # ============================================================
+
   math_easy:
     type: "math"
-    weight: 2
+    weight: 5
+    timeout: 15
     operations: ["add", "sub"]
     minNumber: 1
     maxNumber: 50
     rewards:
       - "give {player} iron_ingot 5"
+
+  math_medium:
+    type: "math"
+    weight: 3
+    timeout: 20
+    operations: ["add", "sub", "mul"]
+    minNumber: 1
+    maxNumber: 100
+    rewards:
+      - "give {player} gold_ingot 3"
+
+  math_hard:
+    type: "math"
+    weight: 2
+    timeout: 30
+    operations: ["add", "sub", "mul", "div"]
+    minNumber: 10
+    maxNumber: 500
+    rewards:
+      - "give {player} diamond 2"
+
+  math_boss:
+    type: "math"
+    weight: 1
+    timeout: 45
+    operations: ["mul", "div"]
+    minNumber: 100
+    maxNumber: 1000
+    rewards:
+      - "give {player} diamond 5"
+
+  math_mixed:
+    type: "math"
+    weight: 3
+    timeout: 25
+    operations: ["add", "sub", "mul", "div"]
+    minNumber: 1
+    maxNumber: 100
+    rewards:
+      - "give {player} gold_ingot 2"
+
+  math_negative:
+    type: "math"
+    weight: 2
+    timeout: 20
+    operations: ["add", "sub"]
+    minNumber: -100
+    maxNumber: 100
+    rewards:
+      - "give {player} iron_ingot 8"
+
+  math_big:
+    type: "math"
+    weight: 1
+    timeout: 40
+    operations: ["add", "sub", "mul"]
+    minNumber: 1000
+    maxNumber: 5000
+    rewards:
+      - "give {player} diamond 3"
+
+  math_division:
+    type: "math"
+    weight: 2
+    timeout: 25
+    operations: ["div"]
+    minNumber: 10
+    maxNumber: 500
+    rewards:
+      - "give {player} emerald 4"

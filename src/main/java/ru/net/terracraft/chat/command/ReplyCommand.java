@@ -3,11 +3,12 @@ package ru.net.terracraft.chat.command;
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.GreedyStringArgument;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.translation.Argument;
 import org.bukkit.entity.Player;
-import ru.net.terracraft.chat.IgnoreManager;
-import ru.net.terracraft.chat.MessageUtil;
-import ru.net.terracraft.chat.ReplyManager;
 import ru.net.terracraft.chat.TerraCraftChatPlugin;
+import ru.net.terracraft.chat.manager.IgnoreManager;
+import ru.net.terracraft.chat.manager.ReplyManager;
+import ru.net.terracraft.chat.util.MessageUtil;
 
 public class ReplyCommand {
 
@@ -34,8 +35,17 @@ public class ReplyCommand {
                     }
 
                     IgnoreManager ignoreManager = plugin.getIgnoreManager();
+
+                    // 1. Target игнорирует sender — target не хочет получать
                     if (ignoreManager.isIgnoring(target, sender)) {
                         MessageUtil.sendPrefixed(sender, "chat.target-ignoring-you");
+                        return;
+                    }
+
+                    // 2. Sender игнорирует target — sender всё равно пишет
+                    if (ignoreManager.isIgnoring(sender, target)) {
+                        MessageUtil.sendPrefixed(sender, "chat.you-ignoring-target",
+                                Argument.string("player", target.getName()));
                         return;
                     }
 

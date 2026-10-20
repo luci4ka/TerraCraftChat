@@ -17,7 +17,7 @@ public class BroadcastCommand {
 
     public void register() {
         new CommandAPICommand("broadcast")
-                .withAliases("bc", "announce")
+                .withAliases("bc", "announce", "tcbroadcast")
                 .withPermission("terracraftchat.broadcast")
                 .withArguments(new GreedyStringArgument("message"))
                 .executes((sender, args) -> {
@@ -28,12 +28,21 @@ public class BroadcastCommand {
 
                     Bukkit.broadcast(formatted);
 
+                    String senderName = sender instanceof Player p ? p.getName() : "CONSOLE";
+                    String worldName = sender instanceof Player p ? p.getWorld().getName() : "server";
+
                     // Логирование
                     if (plugin.getChatLogger() != null) {
-                        String senderName = sender instanceof Player p
-                                ? p.getName()
-                                : "CONSOLE";
                         plugin.getChatLogger().log("BROADCAST", senderName, null, message);
+                    }
+
+                    // Discord — если включён
+                    if (plugin.getChatConfig().discord().enabled()
+                            && !plugin.getChatConfig().discord().webhookUrl().isEmpty()) {
+                        String prefix = plugin.getChatConfig().discord().broadcastPrefix();
+                        String plainForDiscord = prefix + " " + senderName + ": " + message;
+
+                        plugin.getDiscordWebhook().queue(senderName, worldName, plainForDiscord);
                     }
                 })
                 .register();

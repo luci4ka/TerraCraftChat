@@ -1,8 +1,8 @@
 package ru.net.terracraft.chat.command;
 
 import dev.jorel.commandapi.CommandAPICommand;
-import ru.net.terracraft.chat.MessageUtil;
 import ru.net.terracraft.chat.TerraCraftChatPlugin;
+import ru.net.terracraft.chat.util.MessageUtil;
 
 public class ChatReloadCommand {
 
@@ -18,8 +18,11 @@ public class ChatReloadCommand {
                 .withPermission("terracraftchat.admin")
                 .withSubcommand(new CommandAPICommand("reload")
                         .executes((sender, args) -> {
-                            plugin.reload();
-                            MessageUtil.sendPrefixed(sender, "chat.config-reloaded");
+                            if (plugin.reload()) {
+                                MessageUtil.sendPrefixed(sender, "chat.config-reloaded");
+                            } else {
+                                MessageUtil.sendPrefixed(sender, "chat.config-reload-failed");
+                            }
                         })
                 )
                 .register();

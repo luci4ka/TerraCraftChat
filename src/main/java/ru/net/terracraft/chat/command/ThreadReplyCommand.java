@@ -2,10 +2,12 @@ package ru.net.terracraft.chat.command;
 
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.StringArgument;
-import org.bukkit.entity.Player;
-import ru.net.terracraft.chat.MessageUtil;
+import net.kyori.adventure.text.minimessage.translation.Argument;
 import ru.net.terracraft.chat.TerraCraftChatPlugin;
+import ru.net.terracraft.chat.model.ChatMessage;
+import ru.net.terracraft.chat.util.MessageUtil;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public class ThreadReplyCommand {
@@ -27,10 +29,22 @@ public class ThreadReplyCommand {
                     try {
                         id = UUID.fromString(idStr);
                     } catch (IllegalArgumentException ex) {
+                        MessageUtil.sendPrefixed(sender, "chat.invalid-id");
                         return;
                     }
 
-                    if (plugin.getChatMessageRegistry().get(id).isEmpty()) {
+                    Optional<ChatMessage> opt = plugin.getChatMessageRegistry().get(id);
+                    if (opt.isEmpty()) {
+                        MessageUtil.sendPrefixed(sender, "chat.message-not-found");
+                        return;
+                    }
+
+                    ChatMessage parent = opt.get();
+
+                    // Запрет отвечать на своё сообщение
+                    if (parent.getSenderUuid().equals(sender.getUniqueId())) {
+                        MessageUtil.sendPrefixed(sender, "chat.thread-self-reply",
+                                Argument.string("player", parent.getSenderName()));
                         return;
                     }
 

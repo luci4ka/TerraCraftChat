@@ -8,29 +8,34 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.net.terracraft.chat.command.*;
 import ru.net.terracraft.chat.config.ChatConfig;
+import ru.net.terracraft.chat.format.ChatFormatter;
+import ru.net.terracraft.chat.format.HeadDisplayManager;
+import ru.net.terracraft.chat.format.TranslationManager;
+import ru.net.terracraft.chat.game.ChatGameManager;
 import ru.net.terracraft.chat.game.GamesConfig;
+import ru.net.terracraft.chat.integration.*;
+import ru.net.terracraft.chat.listener.ChatListener;
+import ru.net.terracraft.chat.listener.InvListener;
+import ru.net.terracraft.chat.listener.PlayerDataListener;
+import ru.net.terracraft.chat.manager.*;
+import ru.net.terracraft.chat.model.Channel;
+import ru.net.terracraft.chat.model.ChatMessage;
+import ru.net.terracraft.chat.moderation.ChatLogger;
+import ru.net.terracraft.chat.moderation.ChatModerator;
+import ru.net.terracraft.chat.moderation.RuleManager;
+import ru.net.terracraft.chat.storage.StorageManager;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 public final class TerraCraftChatPlugin extends JavaPlugin {
 
     private static TerraCraftChatPlugin instance;
 
-    // ANSI цвета для логов
-    private static final String RESET   = "\u001B[0m";
-    private static final String BOLD    = "\u001B[1m";
-    private static final String DIM     = "\u001B[2m";
-    private static final String RED     = "\u001B[31m";
-    private static final String GREEN   = "\u001B[32m";
-    private static final String YELLOW  = "\u001B[33m";
-    private static final String BLUE    = "\u001B[34m";
-    private static final String MAGENTA = "\u001B[35m";
-    private static final String CYAN    = "\u001B[36m";
-    private static final String WHITE   = "\u001B[37m";
-    private static final String GRAY    = "\u001B[90m";
-
     // ============================================================
-    //  КОНФИГ И МЕНЕДЖЕРЫ
+    //  CONFIG & MANAGERS
     // ============================================================
 
     private ChatConfig chatConfig;
@@ -40,10 +45,13 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     private EmojiManager emojiManager;
     private GamesConfig gamesConfig;
     private IgnoreManager ignoreManager;
+    private NickManager nickManager;
     private ThreadManager threadManager;
     private ReplyManager replyManager;
     private SocialSpyManager socialSpyManager;
     private ChatModerator chatModerator;
+    private RuleManager ruleManager;
+    private ChatRedrawManager chatRedrawManager;
     private LocalAnswerManager localAnswerManager;
     private ChatMessageRegistry chatMessageRegistry;
     private UpdateNotifier updateNotifier;
@@ -51,29 +59,33 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     private ChatLogger chatLogger;
     private DiscordWebhook discordWebhook;
     private AutoBroadcast autoBroadcast;
+    private InvTokenManager invTokenManager;
     private HeadDisplayManager headDisplayManager;
     private ChatFormatter chatFormatter;
+    private ChannelManager channelManager;
+    private GroupManager groupManager;
+    private StorageManager storageManager;
 
     // ============================================================
-    //  ЖИЗНЕННЫЙ ЦИКЛ
+    //  LIFECYCLE
     // ============================================================
 
     @Override
     public void onEnable() {
         instance = this;
 
-        // ============================================================
-        //  0. BSTATS
-        // ============================================================
-        int pluginId = 12345; // ← замени на свой ID
+        // 0. BSTATS
+        int pluginId = 34792;
         new Metrics(this, pluginId);
 
         registerPermissions();
         loadConfigs();
 
-        // ============================================================
-        //  1. МЕНЕДЖЕРЫ БЕЗ ЗАВИСИМОСТЕЙ
-        // ============================================================
+        // 1. Storage (H2 / MySQL) — ДО всех менеджеров
+        this.storageManager = new StorageManager(this);
+        this.storageManager.open();
+
+        // 2. Managers without dependencies
         this.translationManager = new TranslationManager(this);
         this.translationManager.loadAll();
 
@@ -85,88 +97,110 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         this.gamesConfig = new GamesConfig(this);
         this.gamesConfig.load();
 
-        this.ignoreManager = new IgnoreManager(this);
-        this.replyManager = new ReplyManager(this);
-        this.socialSpyManager = new SocialSpyManager(this);
+        this.ignoreManager = new IgnoreManager(this, storageManager);
+        this.nickManager = new NickManager(this, storageManager);
+        this.invTokenManager = new InvTokenManager(this);
+        this.replyManager = new ReplyManager(this, storageManager);
+        this.socialSpyManager = new SocialSpyManager(this, storageManager);
 
-        // ============================================================
-        //  2. МОДЕРАЦИЯ И ЛОКАЛЬНЫЕ ОТВЕТЫ
-        // ============================================================
-        this.chatModerator = new ChatModerator(this, chatConfig);
+        // 3. Moderation and rules
+        this.chatModerator = new ChatModerator(chatConfig);
+        this.ruleManager = new RuleManager(this);
+        this.ruleManager.load();
+
         this.localAnswerManager = new LocalAnswerManager(this, chatConfig);
 
-        // ============================================================
-        //  3. ХРАНИЛИЩА
-        // ============================================================
+        // 4. Storages
         this.chatMessageRegistry = new ChatMessageRegistry(
                 this,
                 chatConfig.delete().cacheSize(),
                 chatConfig.delete().ttlSeconds()
         );
 
-        // ============================================================
-        //  4. ФОРМАТТЕР И ОТОБРАЖЕНИЕ
-        // ============================================================
+        loadHistoryFromDb();
+
+        getServer().getScheduler().runTaskTimerAsynchronously(
+                this, chatMessageRegistry::cleanup, 1200L, 1200L
+        );
+
+        getServer().getScheduler().runTaskTimerAsynchronously(
+                this,
+                () -> {
+                    long cutoff = System.currentTimeMillis()
+                            - (chatConfig.delete().ttlSeconds() * 1000L);
+                    storageManager.cleanupHistory(cutoff);
+                },
+                20L * 60 * 5, 20L * 60 * 5
+        );
+
+        getServer().getScheduler().runTaskTimerAsynchronously(
+                this,
+                () -> storageManager.cleanupExpiredIgnores(System.currentTimeMillis()),
+                20L * 60, 20L * 60
+        );
+
+        // 5. Formatter and display
         this.chatFormatter = new ChatFormatter(this, chatConfig);
         this.headDisplayManager = new HeadDisplayManager(
                 this,
                 chatConfig.display().headDisplayDuration()
         );
 
-        // ============================================================
-        //  5. THREAD MANAGER
-        // ============================================================
-        this.threadManager = new ThreadManager(this, chatMessageRegistry, chatFormatter);
+        // 6. Channels
+        this.channelManager = new ChannelManager(this, storageManager);
+        loadChannels();
 
-        // ============================================================
-        //  6. CHAT GAME MANAGER
-        // ============================================================
+        // 6.5. Group manager
+        this.groupManager = new GroupManager(this, storageManager);
+
+        // 7. Thread manager
+        this.threadManager = new ThreadManager(
+                this, chatMessageRegistry, chatFormatter, chatConfig
+        );
+
+        // 8. Chat game manager
         this.chatGameManager = new ChatGameManager(this, chatConfig, gamesConfig);
 
-        // ============================================================
-        //  7. ВНЕШНИЕ ИНТЕГРАЦИИ
-        // ============================================================
+        // 9. External integrations
         this.discordWebhook = new DiscordWebhook(this, chatConfig);
         this.discordWebhook.start();
 
         this.autoBroadcast = new AutoBroadcast(this, chatConfig);
         this.autoBroadcast.start();
 
-        // ============================================================
-        //  8. ЛОГИРОВАНИЕ
-        // ============================================================
+        // 10. Logging
         if (chatConfig.logging().enabled()) {
             this.chatLogger = new ChatLogger(this);
             this.chatLogger.open();
         }
+        this.chatRedrawManager = new ChatRedrawManager(this, chatFormatter);
 
-        // ============================================================
-        //  9. СЛУШАТЕЛИ
-        // ============================================================
+        // 11. Listeners
         getServer().getPluginManager().registerEvents(new PlayerDataListener(this), this);
         getServer().getPluginManager().registerEvents(new InvListener(this), this);
         getServer().getPluginManager().registerEvents(
                 new ChatListener(this, ignoreManager, headDisplayManager, chatFormatter), this
         );
 
-        // ============================================================
-        //  10. КОМАНДЫ
-        // ============================================================
+        // 12. Commands
         new RpCommand(this).register();
         registerCommands();
 
-        // ============================================================
-        //  11. ЗАПУСК ЗАДАЧ
-        // ============================================================
+        // 13. Scheduled tasks
         this.chatGameManager.start();
 
-        // ============================================================
-        //  12. ПРОВЕРКА ОБНОВЛЕНИЙ
-        // ============================================================
+        // 14. Update checker
         this.updateNotifier = new UpdateNotifier(this);
         this.updateNotifier.checkAsync();
 
-        printStartupBanner();
+        // 15. PAPI expansion
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            new ChatPlaceholders(this).register();
+            getLogger().info("PlaceholderAPI expansion: %terracraftchat_...%");
+        }
+
+        // 16. Startup summary
+        printStartupSummary();
     }
 
     @Override
@@ -177,166 +211,169 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         if (autoBroadcast != null) autoBroadcast.stop();
         if (discordWebhook != null) discordWebhook.stop();
 
-        printShutdownBanner();
+        if (translationManager != null) {
+            translationManager.shutdown();
+        }
+
+        if (storageManager != null) {
+            storageManager.close();
+        }
+
+        instance = null;
+
+        getLogger().info("TerraCraftChat disabled.");
     }
 
     // ============================================================
-    //  КРАСИВЫЙ БАННЕР
+    //  CHANNELS
     // ============================================================
 
-    private void printStartupBanner() {
-        String line = GRAY + "══════════════════════════════════════════════════════" + RESET;
+    private void loadChannels() {
+        List<Channel> list = new ArrayList<>();
+        var section = chatConfig.channels();
 
-        log("");
-        log(line);
-        log("  " + BOLD + CYAN + "TerraCraftChat" + RESET + " " + GREEN + "успешно загружен!" + RESET + " 🎉");
-        log("  " + GRAY + "Версия:" + RESET + " " + WHITE + getPluginMeta().getVersion() + RESET
-                + " " + GRAY + "by" + RESET + " " + MAGENTA + "luci" + RESET + " 👨‍💻");
-        log("  " + GRAY + "Сервер:" + RESET + " " + WHITE + getServer().getName() + " " + getServer().getVersion() + RESET);
-        log("");
+        for (var entry : section.channels().entrySet()) {
+            var e = entry.getValue();
+            list.add(new Channel(
+                    entry.getKey(),
+                    e.prefix(),
+                    e.range(),
+                    e.permission(),
+                    e.format(),
+                    e.cooldown(),
+                    e.publicChannel()
+            ));
+        }
 
-        // Зависимости
-        log("  " + BOLD + YELLOW + "Зависимости:" + RESET);
-        log("    " + GRAY + "CommandAPI:    " + RESET + status(getServer().getPluginManager().getPlugin("CommandAPI")));
-        log("    " + GRAY + "PlaceholderAPI:" + RESET + " " + status(getServer().getPluginManager().getPlugin("PlaceholderAPI")));
-        log("    " + GRAY + "SkinsRestorer: " + RESET + status(getServer().getPluginManager().getPlugin("SkinsRestorer")));
-        log("");
+        if (list.isEmpty()) {
+            getLogger().warning("Список каналов пуст — добавляю дефолтный local.");
+            list.add(new Channel("local", "", 100, "", "local", 0, true));
+        }
 
-        // Фичи
-        log("  " + BOLD + YELLOW + "Фичи:" + RESET);
-        log("    " + GRAY + "Треды:                 " + RESET + status(chatConfig.threads().enabled()));
-        log("    " + GRAY + "Головы в чате:         " + RESET + status(chatConfig.display().showPlayerHeads()));
-        log("    " + GRAY + "Сообщения над головой: " + RESET + status(chatConfig.display().headDisplayEnabled()));
-        log("    " + GRAY + "Эмодзи:                " + RESET + status(chatConfig.emoji().enabled()));
-        log("    " + GRAY + "Discord:               " + RESET + status(chatConfig.discord().enabled()));
-        log("    " + GRAY + "AutoBroadcast:         " + RESET + status(autoBroadcast != null));
-        log("    " + GRAY + "Chat Games:            " + RESET + status(chatConfig.chatGames().enabled()));
-        log("    " + GRAY + "Логирование:           " + RESET + status(chatConfig.logging().enabled()));
-        log("");
-
-        // Статистика
-        log("  " + BOLD + YELLOW + "Загружено:" + RESET);
-        log("    " + GRAY + "Локалей:  " + RESET + WHITE + translationManager.getLocaleCount() + RESET);
-        log("    " + GRAY + "Эмодзи:   " + RESET + WHITE + emojiManager.size() + RESET);
-        log("    " + GRAY + "Игр:      " + RESET + WHITE + gamesConfig.getGames().size() + RESET);
-        log(line);
-        log("");
+        channelManager.load(list, section.defaultChannel());
     }
 
-    private void printShutdownBanner() {
-        String line = GRAY + "══════════════════════════════════════════════════════" + RESET;
+    // ============================================================
+    //  STARTUP SUMMARY
+    // ============================================================
 
-        log("");
-        log(line);
-        log("  " + BOLD + CYAN + "TerraCraftChat" + RESET + " " + RED + "выключен." + RESET + " До встречи! 👋");
-        log(line);
-        log("");
+    private void printStartupSummary() {
+        getLogger().info("--------------------------------------------------");
+        getLogger().info(" TerraCraftChat v" + getPluginMeta().getVersion() + " loaded");
+        getLogger().info(" Server: " + getServer().getName() + " " + getServer().getVersion());
+        getLogger().info("");
+        getLogger().info(" Dependencies:");
+        getLogger().info("   CommandAPI:     " + status(getServer().getPluginManager().getPlugin("CommandAPI")));
+        getLogger().info("   PlaceholderAPI: " + status(getServer().getPluginManager().getPlugin("PlaceholderAPI")));
+        getLogger().info("   SkinsRestorer:  " + status(getServer().getPluginManager().getPlugin("SkinsRestorer")));
+        getLogger().info("   LuckPerms:      " + status(getServer().getPluginManager().getPlugin("LuckPerms")));
+        getLogger().info("");
+        getLogger().info(" Storage:");
+        getLogger().info("   Type:           " + chatConfig.storage().type());
+        getLogger().info("");
+        getLogger().info(" Features:");
+        getLogger().info("   Channels:       " + channelManager.all().size());
+        getLogger().info("   Rules:          " + ruleManager.size());
+        getLogger().info("   Threads:        " + status(chatConfig.threads().enabled()));
+        getLogger().info("   Player heads:   " + status(chatConfig.display().showPlayerHeads()));
+        getLogger().info("   Head display:   " + status(chatConfig.display().headDisplayEnabled()));
+        getLogger().info("   Emojis:         " + status(chatConfig.emoji().enabled()));
+        getLogger().info("   PAPI expansion: " + status(getServer().getPluginManager().getPlugin("PlaceholderAPI") != null));
+        getLogger().info("   Discord:        " + status(chatConfig.discord().enabled()));
+        getLogger().info("   AutoBroadcast:  " + status(autoBroadcast != null));
+        getLogger().info("   Chat Games:     " + status(chatConfig.chatGames().enabled()));
+        getLogger().info("   Logging:        " + status(chatConfig.logging().enabled()));
+        getLogger().info("");
+        getLogger().info(" Loaded:");
+        getLogger().info("   Locales:        " + translationManager.getLocaleCount());
+        getLogger().info("   Emojis:         " + emojiManager.size());
+        getLogger().info("   Games:          " + gamesConfig.getGames().size());
+        getLogger().info("--------------------------------------------------");
     }
 
     private String status(Plugin plugin) {
-        if (plugin == null) return RED + "❌ не найден" + RESET;
-        if (!plugin.isEnabled()) return YELLOW + "⚠ выключен" + RESET;
-        return GREEN + "✅ v" + plugin.getPluginMeta().getVersion() + RESET;
+        if (plugin == null) return "not found";
+        if (!plugin.isEnabled()) return "disabled";
+        return "v" + plugin.getPluginMeta().getVersion();
     }
 
     private String status(boolean enabled) {
-        return enabled ? GREEN + "✅" + RESET : RED + "❌" + RESET;
-    }
-
-    private void log(String message) {
-        getServer().getConsoleSender().sendMessage(message);
+        return enabled ? "enabled" : "disabled";
     }
 
     // ============================================================
-    //  ПРАВА
+    //  PERMISSIONS
     // ============================================================
 
     private void registerPermissions() {
         var pm = getServer().getPluginManager();
 
-        // --- Основные ---
         pm.addPermission(new Permission("terracraftchat.color",
-                "Разрешает использовать &-коды и hex-цвета в сообщениях",
+                "Allows using &-codes and hex colors in messages",
                 PermissionDefault.FALSE));
-
         pm.addPermission(new Permission("terracraftchat.msg",
-                "Разрешает использовать /msg",
-                PermissionDefault.TRUE));
-
+                "Allows using /msg", PermissionDefault.TRUE));
         pm.addPermission(new Permission("terracraftchat.reply",
-                "Разрешает использовать /reply",
-                PermissionDefault.TRUE));
-
+                "Allows using /reply", PermissionDefault.TRUE));
         pm.addPermission(new Permission("terracraftchat.ignore",
-                "Разрешает использовать /ignore",
-                PermissionDefault.TRUE));
-
-        // --- Контент ---
-        pm.addPermission(new Permission("terracraftchat.emoji",
-                "Разрешает использовать :эмодзи: в чате",
-                PermissionDefault.TRUE));
-
-        pm.addPermission(new Permission("terracraftchat.item",
-                "Разрешает использовать [item] в чате",
-                PermissionDefault.TRUE));
-
-        pm.addPermission(new Permission("terracraftchat.inv",
-                "Разрешает использовать [inv] в чате",
-                PermissionDefault.TRUE));
-
-        // --- Админ ---
-        pm.addPermission(new Permission("terracraftchat.broadcast",
-                "Разрешает использовать /broadcast",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.admin",
-                "Разрешает /chat reload",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.socialspy",
-                "Разрешает видеть все личные сообщения",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.moderator",
-                "Разрешает удалять сообщения кликом",
-                PermissionDefault.OP));
-
-        // --- Bypass ---
-        pm.addPermission(new Permission("terracraftchat.bypass.ads",
-                "Обход анти-рекламы",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.bypass.swear",
-                "Обход фильтра мата",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.bypass.levenshtein",
-                "Обход проверки похожести",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.bypass.flood",
-                "Обход анти-флуда",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.bypass.crash",
-                "Обход anti-crash",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.bypass.cooldown",
-                "Обход cooldown",
-                PermissionDefault.OP));
-
-        pm.addPermission(new Permission("terracraftchat.bypass.duplicate",
-                "Обход анти-дубля",
-                PermissionDefault.OP));
-
+                "Allows using /ignore", PermissionDefault.TRUE));
         pm.addPermission(new Permission("terracraftchat.thread",
-                "Разрешает отвечать в треды",
-                PermissionDefault.TRUE));
+                "Allows replying in threads", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.nick",
+                "Allows using /nick", PermissionDefault.OP));
+
+        pm.addPermission(new Permission("terracraftchat.emoji",
+                "Allows using :emoji: in chat", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.item",
+                "Allows using [item] in chat", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.inv",
+                "Allows using [inv] in chat", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.inv.admin",
+                "Allows /inv_show player <ник>", PermissionDefault.OP));
+
+        pm.addPermission(new Permission("terracraftchat.broadcast",
+                "Allows using /broadcast", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.admin",
+                "Allows /chat reload", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.socialspy",
+                "Allows seeing all private messages", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.moderator",
+                "Allows deleting messages by clicking", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.channel.staff",
+                "Allows using the staff channel", PermissionDefault.OP));
+
+        // Новые права (stats + groups)
+        pm.addPermission(new Permission("terracraftchat.stats",
+                "Allows /chat stats", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.group.create",
+                "Allows /chat create-group", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.group.use",
+                "Allows /chat group <name> <msg>", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.group.invite",
+                "Allows /chat invite", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.group.leave",
+                "Allows /chat leave", PermissionDefault.TRUE));
+        pm.addPermission(new Permission("terracraftchat.group.delete",
+                "Allows /chat delete <group>", PermissionDefault.TRUE));
+
+        pm.addPermission(new Permission("terracraftchat.bypass.ads",
+                "Bypasses anti-advertisement", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.bypass.swear",
+                "Bypasses swear filter", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.bypass.levenshtein",
+                "Bypasses similarity check", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.bypass.flood",
+                "Bypasses anti-flood", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.bypass.crash",
+                "Bypasses anti-crash", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.bypass.cooldown",
+                "Bypasses cooldown", PermissionDefault.OP));
+        pm.addPermission(new Permission("terracraftchat.bypass.duplicate",
+                "Bypasses duplicate check", PermissionDefault.OP));
     }
 
     // ============================================================
-    //  КОНФИГ
+    //  CONFIG
     // ============================================================
 
     public void loadConfigs() {
@@ -345,23 +382,108 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         this.chatConfig = YamlConfigurations.update(configPath, ChatConfig.class);
     }
 
-    public void reload() {
-        loadConfigs();
+    public boolean reload() {
+        ChatConfig oldConfig = this.chatConfig;
+        try {
+            loadConfigs();
+        } catch (Exception ex) {
+            getLogger().severe("Ошибка загрузки конфига: " + ex.getMessage());
+            this.chatConfig = oldConfig;
+            return false;
+        }
 
-        if (autoBroadcast != null) autoBroadcast.reload();
+        try {
+            if (autoBroadcast != null) autoBroadcast.reload(chatConfig);
+            if (discordWebhook != null) discordWebhook.reload(chatConfig);
+            if (localAnswerManager != null) localAnswerManager.reload(chatConfig);
+            if (ruleManager != null) ruleManager.reload();
 
-        this.gamesConfig.load();
-        this.chatGameManager.stop();
-        this.chatGameManager = new ChatGameManager(this, chatConfig, gamesConfig);
-        this.chatGameManager.start();
+            this.gamesConfig.load();
+            this.chatGameManager.stop();
+            this.chatGameManager = new ChatGameManager(this, chatConfig, gamesConfig);
+            this.chatGameManager.start();
 
-        this.emojiManager.load();
-        this.chatFormatter = new ChatFormatter(this, chatConfig);
-        this.translationManager.reload();
+            this.emojiManager.load();
+
+            this.chatFormatter.reload(chatConfig);
+            this.threadManager.reload(chatConfig, chatFormatter);
+            this.headDisplayManager.reload(chatConfig.display().headDisplayDuration());
+            this.chatMessageRegistry.reload(
+                    chatConfig.delete().cacheSize(),
+                    chatConfig.delete().ttlSeconds()
+            );
+            this.chatMessageRegistry.cleanup();
+
+            this.chatModerator.reload(chatConfig);
+
+            if (chatConfig.logging().enabled() && chatLogger == null) {
+                this.chatLogger = new ChatLogger(this);
+                this.chatLogger.open();
+            } else if (!chatConfig.logging().enabled() && chatLogger != null) {
+                this.chatLogger.close();
+                this.chatLogger = null;
+            }
+
+            this.translationManager.reload();
+            loadChannels();
+        } catch (Exception ex) {
+            getLogger().severe("Ошибка применения конфига: " + ex.getMessage());
+            ex.printStackTrace();
+            this.chatConfig = oldConfig;
+            return false;
+        }
+
+        if (!oldConfig.storage().type().equalsIgnoreCase(chatConfig.storage().type())
+                || !oldConfig.storage().tablePrefix().equals(chatConfig.storage().tablePrefix())) {
+            getLogger().warning("Изменения в storage.type/tablePrefix не применились. "
+                    + "Нужен перезапуск сервера.");
+        }
+
+        getLogger().info("Configuration reloaded.");
+        return true;
+    }
+
+    private void loadHistoryFromDb() {
+        if (storageManager == null) return;
+
+        long start = System.currentTimeMillis();
+        long cutoff = System.currentTimeMillis()
+                - (chatConfig.delete().ttlSeconds() * 1000L);
+        int limit = chatConfig.delete().cacheSize();
+
+        var rows = storageManager.loadRecentHistory(cutoff, limit);
+        if (rows.isEmpty()) return;
+
+        List<UUID> ids = rows.stream().map(StorageManager.HistoryRow::id).toList();
+        var viewersByMsg = storageManager.loadViewersBatch(ids);
+        var repliesByMsg = storageManager.getThreadRepliesBatch(ids);
+
+        for (var row : rows) {
+            ChatMessage msg = new ChatMessage(
+                    row.id(), row.senderUuid(), row.senderName(),
+                    row.rawMessage(), row.channelId()
+            );
+
+            var viewerIds = viewersByMsg.getOrDefault(row.id(), List.of());
+            for (UUID v : viewerIds) msg.addViewer(v);
+
+            var replies = repliesByMsg.getOrDefault(row.id(), List.of());
+            for (var r : replies) {
+                msg.addReply(new ChatMessage.ThreadReply(
+                        r.id(), r.authorUuid(), r.authorName(),
+                        r.text(), r.timestamp()
+                ));
+            }
+
+            chatMessageRegistry.registerWithoutThreadLoad(msg);
+        }
+
+        getLogger().info("Загружено сообщений из истории: " + rows.size()
+                + " за " + (System.currentTimeMillis() - start) + " мс");
     }
 
     // ============================================================
-    //  КОМАНДЫ
+    //  COMMANDS
     // ============================================================
 
     private void registerCommands() {
@@ -374,10 +496,16 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         new BroadcastCommand(this).register();
         new InvCommand(this).register();
         new ThreadReplyCommand(this).register();
+        new NickCommand(this).register();
+        new ChannelCommand(this).register();
+        new ChatHistoryCommand(this).register();
+        new ChatStatsCommand(this).register();
+        new ChatPurgeCommand(this).register();
+        new ChatGroupCommand(this).register();
     }
 
     // ============================================================
-    //  ГЕТТЕРЫ
+    //  GETTERS
     // ============================================================
 
     public static TerraCraftChatPlugin getInstance() { return instance; }
@@ -387,6 +515,7 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     public ChatLogger getChatLogger() { return chatLogger; }
     public ChatMessageRegistry getChatMessageRegistry() { return chatMessageRegistry; }
     public ChatModerator getChatModerator() { return chatModerator; }
+    public RuleManager getRuleManager() { return ruleManager; }
     public ChatGameManager getChatGameManager() { return chatGameManager; }
     public AutoBroadcast getAutoBroadcast() { return autoBroadcast; }
     public DiscordWebhook getDiscordWebhook() { return discordWebhook; }
@@ -401,4 +530,10 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     public ThreadManager getThreadManager() { return threadManager; }
     public GamesConfig getGamesConfig() { return gamesConfig; }
     public UpdateNotifier getUpdateNotifier() { return updateNotifier; }
+    public NickManager getNickManager() { return nickManager; }
+    public ChannelManager getChannelManager() { return channelManager; }
+    public GroupManager getGroupManager() { return groupManager; }
+    public InvTokenManager getInvTokenManager() { return invTokenManager; }
+    public ChatRedrawManager getChatRedrawManager() { return chatRedrawManager; }
+    public StorageManager getStorageManager() { return storageManager; }
 }

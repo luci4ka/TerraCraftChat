@@ -1,23 +1,53 @@
-chat:
-  prefix: "<gray>[<gold>TerraCraftChat<gray>] <reset>"
+# ============================================================
+#  CHAT — сообщения
+# ============================================================
 
-  # ===== Команды /msg, /reply =====
-  player-not-found: "<red>Игрок <white><player> <red>не найден."
-  cannot-message-self: "<red>Нельзя отправить сообщение самому себе."
-  target-ignoring-you: "<red>Этот игрок игнорирует ваши сообщения."
-  you-ignoring-target: "<red>Вы игнорируете этого игрока. Используйте /ignore <player>, чтобы перестать."
-  no-reply-target: "<red>У вас нет собеседника для ответа."
+chat:
+  # ===== Общее =====
+  prefix: "<gray>[<gold>TerraCraftChat<gray>] <reset>"
+  no-permission: "<red>У вас нет прав на это действие."
+  config-reloaded: "<green>Конфигурация перезагружена."
+  config-reload-failed: "<red>Не удалось перезагрузить конфиг. Проверьте консоль."
+
+  # ===== Каналы =====
+  channel-no-access: "<red>У вас нет доступа к этому каналу."
+  channel-unknown: "<red>Канал '<id>' не найден."
+  channel-switched: "<gray>Активный канал: <yellow><channel></yellow>"
+  channel-reset: "<gray>Канал сброшен на стандартный."
+
+  # ===== Ники =====
+  nick-empty: "<red>Ник не может быть пустым."
+  nick-too-long: "<red>Ник слишком длинный (макс. 16)."
+  nick-set: "<green>Ник установлен."
+  nick-reset: "<yellow>Ник сброшен."
+  nick-invalid: "<red>Ник содержит запрещённые теги."
+  nick-impersonation: "<red>Ник совпадает с игроком <white><player></white>."
+  nick-reserved: "<red>Ник '<player>' зарезервирован."
 
   # ===== Игнор =====
   ignore-enabled: "<gray>Вы больше не видите сообщения игрока <white><player><gray>."
   ignore-disabled: "<gray>Вы снова видите сообщения игрока <white><player><gray>."
-  already-ignored: "<red>Игрок <white><player> <red>уже в вашем игнор-листе."
-  not-ignored: "<red>Игрока <white><player> <red>нет в вашем игнор-листе."
   cannot-ignore-self: "<red>Нельзя игнорировать самого себя."
+  ignore-list-empty: "<gray>Ваш игнор-лист пуст."
+  ignore-list-header: "<gray>Игнорируемые (<count>):"
+  ignore-list-entry: "<dark_gray> • <white><player>"
+  ignore-invalid-time: "<red>Неверный формат времени. Пример: 30m, 2h, 1d"
+  ignore-enabled-temp: "<green>Игнорируешь <white><player></white> на <yellow><time></yellow> мин."
+  history-empty: "<gray>У игрока <white><player></white> нет сообщений в истории."
+  history-header: "<gray>── История <white><player></white> (последние <yellow><count></yellow>) ──"
+  history-entry: "<dark_gray>[<gray><date> <white><time><dark_gray>] <gray>[<yellow><channel><gray>] <white><message>"
+  stats-header: "<gray>── Статистика <white><player></white> ──"
+  stats-sent: "<gray>Отправлено: <green><count>"
+  stats-blocked: "<gray>Заблокировано: <red><count>"
+  stats-swear: "<gray>Мат поймано: <yellow><count>"
+  stats-ads: "<gray>Реклама поймана: <orange><count>"
+  purge-started: "<gray>Запущена очистка сообщений старше <yellow><days></yellow> дней (async)."
 
-  # ===== Общие =====
-  no-permission: "<red>У вас нет прав на это действие."
-  config-reloaded: "<green>Конфигурация перезагружена."
+  # ===== /msg, /reply =====
+  cannot-message-self: "<red>Нельзя отправить сообщение самому себе."
+  target-ignoring-you: "<red>Этот игрок игнорирует ваши сообщения."
+  you-ignoring-target: "<red>Вы игнорируете этого игрока. Используйте /ignore <player>, чтобы перестать."
+  no-reply-target: "<red>У вас нет собеседника для ответа."
 
   # ===== Соц-шпион =====
   socialspy-enabled: "<green>Режим соц-шпиона включён. Вы видите все ЛС."
@@ -31,36 +61,57 @@ chat:
   crash: "<red>Сообщение содержит недопустимые символы."
   swear: "<red>Пожалуйста, не используй нецензурную лексику."
   anti-ad: "<red>Реклама запрещена!"
+
+  # ===== Треды =====
   thread-active: "<green>Режим ответа включён. Следующее сообщение уйдёт в тред."
   thread-limit: "<red>Достигнут лимит ответов в треде."
-  reaction-invalid: "<red>Недопустимая реакция."
+  thread-no-access: "<red>Вы не видели это сообщение и не можете ответить в тред."
+  thread-disabled: "<red>Треды отключены."
+  thread-self-reply: "<red>Нельзя ответить в тред на своё же сообщение."
   thread-button-hover: "<gray>Ответить в тред"
   thread-more: "<dark_gray>... ещё <count> ответов"
   thread-replied: "<dark_gray>ответил <target>"
 
+  # ===== Удаление сообщений =====
+  delete-button-hover: "<red>Удалить это сообщение"
+  delete-notice: "<red>--- Сообщение от <sender> удалено модератором <moderator> ---"
+  delete-disabled: "<red>Удаление сообщений отключено."
+  invalid-id: "<red>Некорректный идентификатор сообщения."
+  message-not-found: "<red>Сообщение не найдено или устарело."
+
   # ===== [inv] и [item] =====
   inv-self-not-allowed: "<red>Нельзя смотреть свой инвентарь через [inv]."
+  inv-token-invalid: "<red>Ссылка на инвентарь устарела или недействительна."
   item-hand-empty: "<gray>пусто"
   inv-label: "<aqua>[Инвентарь]</aqua>"
   inv-hover: "<gray>Нажми, чтобы посмотреть инвентарь <white><player></white>"
-  delete-button-hover: "<red>Удалить это сообщение"
-  delete-notice: "<red>--- Сообщение от <sender> удалено модератором <moderator> ---"
+
+  # ===== Discord =====
+  discord-format: "**[Объявление]** <sender>: <message>"
+
+# ============================================================
+#  AUTOBROADCAST
+# ============================================================
 
 autobroadcast:
   rules: "<yellow>Не забывай читать правила: <white>/rules"
   discord: "<yellow>Наш Discord: <white>discord.gg/terracraft"
   donate: "<yellow>Купить донат: <white>/donate"
 
+# ============================================================
+#  CHAT GAMES
+# ============================================================
+
 chatgames:
   unscramble:
-    start: "<gold>[Игра] <yellow>Разгадай слово: <white><word>"
+    start: "<gold>[Игра] <yellow>Разгадай слово: <white><prompt>"
     win: "<green>[Игра] <yellow><player> <green>угадал слово <white><answer> <green>за <time> сек!"
     timeout: "<red>[Игра] Никто не угадал. Слово было: <white><answer>"
   quiz:
-    start: "<gold>[Викторина] <yellow><word>"
+    start: "<gold>[Викторина] <yellow><prompt>"
     win: "<green>[Викторина] <yellow><player> <green>ответил: <white><answer> <green>(<time> сек)"
     timeout: "<red>[Викторина] Никто не ответил. Правильный ответ: <white><answer>"
   math:
-    start: "<gold>[Математика] <yellow>Реши: <white><word>"
+    start: "<gold>[Математика] <yellow>Реши: <white><prompt>"
     win: "<green>[Математика] <yellow><player> <green>ответил: <white><answer> <green>(<time> сек)"
     timeout: "<red>[Математика] Никто не решил. Ответ: <white><answer>"

@@ -37,6 +37,8 @@ chat:
   thread-button-hover: "<gray>Im Thread antworten"
   thread-more: "<dark_gray>... <count> weitere Antworten"
   thread-replied: "<dark_gray>antwortete <target>"
+  thread-no-access: "<red>You did not see this message and cannot reply."
+  thread-disabled: "<red>Threads are disabled."
 
   # ===== [inv] und [item] =====
   inv-self-not-allowed: "<red>Du kannst dein eigenes Inventar nicht über [inv] ansehen."

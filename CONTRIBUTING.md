@@ -1,5 +1,3 @@
-# Contributing to TerraCraftChat
-
 Спасибо за интерес к проекту! Мы рады любому вкладу — от исправления опечаток до новых фич.
 
 ## 📋 Содержание
@@ -42,9 +40,11 @@
 2. ...
 
 **Версии:**
-- Плагин: 1.0
+- Плагин: 1.0.0
 - Paper: 1.21.11-XXX
 - Java: 21
+- CommandAPI: 12.1.0
+- PlaceholderAPI: 2.12.3 (опционально)
 
 **Лог:** (вставить ошибку из latest.log)
 
@@ -69,6 +69,7 @@
 - Новым фичам (после обсуждения в issue)
 - Дополнительным языкам
 - Тестам
+- Новым Chat Games (`games.yml`)
 
 ---
 
@@ -78,7 +79,7 @@
 
 | Компонент | Версия |
 |---|---|
-| **JDK** | 21 или 25 |
+| **JDK** | 21+ (Paper 1.21.11 требует 21) |
 | **Gradle** | 9.1.0+ (или wrapper) |
 | **Git** | любой |
 
@@ -88,8 +89,8 @@
 
 ```bash
 # Форкни через GitHub UI, потом:
-git clone https://github.com/YOUR-USERNAME/TerraCraftChat.git
-cd TerraCraftChat
+git clone https://github.com/YOUR-USERNAME/Chat.git
+cd Chat
 ```
 
 2. **Настрой Git (Windows)**
@@ -107,7 +108,7 @@ git config core.eol lf
 ./gradlew clean build
 ```
 
-Готовый JAR — в `build/libs/Chat-1.0.jar`.
+Готовый JAR — в `build/libs/Chat-1.0.0.jar`.
 
 4. **Установи на тестовый сервер**
 
@@ -117,7 +118,10 @@ git config core.eol lf
 ./gradlew runServer
 ```
 
-Или вручную: скопируй JAR в `plugins/` твоего тестового сервера.
+Или вручную: скопируй JAR в `plugins/` твоего тестового сервера. **Не забудь** установить:
+- [CommandAPI](https://github.com/CommandAPI/CommandAPI/releases) 12.1.0+
+- [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) (опционально)
+- [SkinsRestorer](https://www.spigotmc.org/resources/skinsrestorer.2124/) (опционально, для голов)
 
 ---
 
@@ -129,9 +133,9 @@ git config core.eol lf
 - **Фигурные скобки**: на той же строке (`K&R`)
 - **Длина строки**: до 120 символов
 - **Именование**:
-    - Классы: `PascalCase`
-    - Методы/поля: `camelCase`
-    - Константы: `UPPER_SNAKE_CASE`
+  - Классы: `PascalCase`
+  - Методы/поля: `camelCase`
+  - Константы: `UPPER_SNAKE_CASE`
 
 **Пример:**
 ```java
@@ -166,6 +170,19 @@ public class ChatFormatter {
 - **Никаких хардкоженных строк** — только i18n (`messages_*.yml`) или конфиг
 - **Никакого blocking I/O в main thread** — используй `runTaskAsynchronously`
 - **Всегда отменяй задачи** в `onDisable` (scheduler, HTTP, etc.)
+- **`Locale.ROOT`** в `toLowerCase()`/`toUpperCase()` — иначе турецкая локаль ломает
+- **Потокобезопасность**: `ConcurrentHashMap`, `volatile`, `synchronized` где нужно
+- **`Player` из async-потока** — нельзя. Используй снапшоты (UUID, имя) или `runTask`
+
+### Работа с `Player` и `AsyncChatEvent`
+
+`AsyncChatEvent` вызывается **асинхронно**. Правила:
+- Читать `sender.hasPermission(...)`, `sender.getName()` — **можно**
+- Вызывать `Bukkit.getOnlinePlayers()`, `player.sendMessage(...)` — **нельзя** (только через `runTask`)
+- Тяжёлые проверки (`ChatModerator.check`, Levenshtein, regex) — **в async**
+- Всё, что трогает `Player`/`Bukkit` — **в main** (`runTask`)
+
+**Паттерн:** async-проверка → `runTask` → рассылка.
 
 ---
 
@@ -228,9 +245,11 @@ ls build/libs/
 **Чек-лист:**
 - [ ] Код компилируется без ошибок
 - [ ] Нет warnings от компилятора (или минимум)
-- [ ] JAR собирается в `build/libs/Chat-1.0.jar`
-- [ ] Протестировано на Paper 1.21.11
+- [ ] JAR собирается в `build/libs/Chat-1.0.0.jar`
+- [ ] Протестировано на Paper 1.21.11 + CommandAPI 12.1.0
 - [ ] Нет хардкода языка (всё в `messages_*.yml`)
+- [ ] Нет `Player`-вызовов из async-потока
+- [ ] `Locale.ROOT` в `toLowerCase`/`toUpperCase`
 - [ ] Обновлён README, если менялось API/команды/конфиг
 - [ ] Обновлён `CHANGELOG.md` (если есть)
 
@@ -253,7 +272,7 @@ Closes #123
 
 ## Как тестировал
 1. Собрал JAR
-2. Запустил на Paper 1.21.11
+2. Запустил на Paper 1.21.11 + CommandAPI 12.1.0
 3. Проверил /trade, /tc, /tr
 
 ## Скриншоты
@@ -271,17 +290,26 @@ Closes #123
 ## 📁 Структура проекта
 
 ```
-TerraCraftChat/
+Chat/
 ├── src/main/
 │   ├── java/ru/net/terracraft/chat/
 │   │   ├── TerraCraftChatPlugin.java    # Точка входа
-│   │   ├── ChatListener.java            # AsyncChatEvent
-│   │   ├── ChatFormatter.java           # Форматирование сообщений
-│   │   ├── ChatModerator.java           # Модерация
-│   │   ├── ChatConfig.java              # Конфиг
-│   │   ├── command/                     # Команды
-│   │   ├── config/                      # Секции конфига
-│   │   └── game/                        # Chat Games
+│   │   ├── command/                     # Команды (/msg, /nick, /channel, /inv_show, ...)
+│   │   ├── config/                      # ChatConfig (все секции конфига)
+│   │   ├── format/                      # ChatFormatter, NickFormat, HeadDisplayManager,
+│   │   │                                # TranslationManager
+│   │   ├── game/                        # ChatGameManager, GamesConfig, GameDefinition,
+│   │   │                                # ShuffleBag
+│   │   ├── integration/                 # AutoBroadcast, DiscordWebhook, EmojiManager,
+│   │   │                                # LocalAnswerManager, UpdateNotifier, ChatPlaceholders
+│   │   ├── listener/                    # ChatListener, PlayerDataListener, InvListener
+│   │   ├── manager/                     # ChannelManager, ChatMessageRegistry, ChatRedrawManager,
+│   │   │                                # IgnoreManager, InvTokenManager, NickManager,
+│   │   │                                # ReplyManager, SkinHeadCache, SocialSpyManager,
+│   │   │                                # ThreadManager
+│   │   ├── model/                       # Channel, ChatMessage, InvViewHolder
+│   │   ├── moderation/                  # ChatLogger, ChatModerator
+│   │   └── util/                        # LevenshteinUtil, MessageUtil
 │   └── resources/
 │       ├── paper-plugin.yml
 │       ├── games.yml
@@ -301,12 +329,29 @@ TerraCraftChat/
 
 | Класс | Ответственность |
 |---|---|
-| `TerraCraftChatPlugin` | Инициализация, регистрация |
-| `ChatListener` | Перехват событий, роутинг |
-| `ChatFormatter` | Сборка Component из формата + данных |
-| `ChatModerator` | Проверки (cooldown, маты, реклама) |
+| `TerraCraftChatPlugin` | Инициализация, регистрация, `reload()` |
+| `ChatListener` | `AsyncChatEvent`, роутинг (модерация → игра → тред → чат) |
+| `ChatFormatter` | Сборка `Component` из формата + данных |
+| `ChatModerator` | Проверки: cooldown, дубли, Levenshtein, маты, реклама, anti-crash |
+| `ChannelManager` | Каналы (local/global/staff + свои), `resolve()` по префиксу |
 | `ThreadManager` | Треды (ответы на сообщения) |
-| `ChatGameManager` | Мини-игры |
+| `ChatGameManager` | Мини-игры (Unscramble, Quiz, Math) |
+| `ChatRedrawManager` | Перерисовка чата при удалении (работает для онлайн + офлайн) |
+| `InvTokenManager` | Одноразовые токены для `[inv]` |
+| `NickFormat` | Безопасный `MiniMessage` для ников (только цвета) |
+| `ChatPlaceholders` | PAPI-плейсхолдеры `%terracraftchat_...%` |
+| `TranslationManager` | Загрузка локалей, overlay из jar + `lang/` |
+
+### Поток сообщения
+
+1. **`AsyncChatEvent`** (async) — `ChatListener.onChat`
+2. `ChannelManager.resolve` — определяем канал (префикс → активный → default)
+3. `ChatModerator.check` — проверки (async-safe)
+4. `record()` — кэш cooldown (async-safe)
+5. **`runTask`** (main) — блокирующие случаи (cooldown, мат, реклама)
+6. `ChatGameManager.checkAnswer` — если активна игра
+7. `ThreadManager.postReply` — если активен тред
+8. `ChatListener.handleChannel` — рассылка зрителям + side effects (Discord, бот, консоль, пузырь)
 
 ---
 

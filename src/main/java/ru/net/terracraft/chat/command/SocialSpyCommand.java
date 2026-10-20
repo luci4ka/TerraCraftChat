@@ -1,9 +1,8 @@
 package ru.net.terracraft.chat.command;
 
 import dev.jorel.commandapi.CommandAPICommand;
-import org.bukkit.entity.Player;
-import ru.net.terracraft.chat.MessageUtil;
-import ru.net.terracraft.chat.SocialSpyManager;
+import ru.net.terracraft.chat.util.MessageUtil;
+import ru.net.terracraft.chat.manager.SocialSpyManager;
 import ru.net.terracraft.chat.TerraCraftChatPlugin;
 
 public class SocialSpyCommand {

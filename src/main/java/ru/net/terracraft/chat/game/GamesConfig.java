@@ -7,6 +7,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class GamesConfig {
 
@@ -56,7 +57,7 @@ public class GamesConfig {
     }
 
     private GameDefinition parseGame(String id, ConfigurationSection section) {
-        String typeStr = section.getString("type", "unscramble").toUpperCase();
+        String typeStr = section.getString("type", "unscramble").toUpperCase(Locale.ROOT);
         GameType type;
         try {
             type = GameType.valueOf(typeStr);
@@ -67,7 +68,6 @@ public class GamesConfig {
 
         int weight = section.getInt("weight", 1);
         List<String> rewards = section.getStringList("rewards");
-
         List<String> words = section.getStringList("words");
 
         List<GameDefinition.Question> questions = new ArrayList<>();
@@ -92,9 +92,28 @@ public class GamesConfig {
         List<String> operations = section.getStringList("operations");
         int minNumber = section.getInt("minNumber", 1);
         int maxNumber = section.getInt("maxNumber", 100);
+        int timeoutSeconds = section.getInt("timeout", 0); // 0 = глобальный
+
+        // Валидация
+        if (maxNumber < minNumber) {
+            plugin.getLogger().warning("games.yml: " + id
+                    + " — maxNumber < minNumber, меняю местами");
+            int tmp = minNumber;
+            minNumber = maxNumber;
+            maxNumber = tmp;
+        }
+
+        // QUIZ без ответов
+        for (GameDefinition.Question q : questions) {
+            if (q.answers().isEmpty()) {
+                plugin.getLogger().warning("games.yml: " + id
+                        + " — вопрос без ответов, пропускаю");
+                return null;
+            }
+        }
 
         return new GameDefinition(id, type, weight, rewards, words, questions,
-                operations, minNumber, maxNumber);
+                operations, minNumber, maxNumber, timeoutSeconds);
     }
 
     public List<GameDefinition> getGames() {

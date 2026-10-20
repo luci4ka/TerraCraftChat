@@ -86,20 +86,34 @@ public class RpCommand {
     /**
      * Рассылает RP-сообщение в радиусе из конфига.
      * Если radius <= 0 — всем на сервере.
+     * Учитывает ignore-лист (viewer игнорирует sender — не видит).
      */
     private void broadcastRp(Player sender, Component message) {
+        var ignoreManager = plugin.getIgnoreManager();
         int radius = plugin.getChatConfig().channels().rpRadius();
 
         if (radius <= 0) {
-            Bukkit.broadcast(message);
+            for (Player viewer : Bukkit.getOnlinePlayers()) {
+                if (ignoreManager.isIgnoring(viewer, sender)) continue;
+                viewer.sendMessage(message);
+            }
             return;
         }
 
         int radiusSq = radius * radius;
+        boolean senderIncluded = false;
+
         for (Player viewer : sender.getWorld().getPlayers()) {
-            if (viewer.getLocation().distanceSquared(sender.getLocation()) <= radiusSq) {
-                viewer.sendMessage(message);
-            }
+            if (ignoreManager.isIgnoring(viewer, sender)) continue;
+            if (viewer.getLocation().distanceSquared(sender.getLocation()) > radiusSq) continue;
+
+            viewer.sendMessage(message);
+            if (viewer.equals(sender)) senderIncluded = true;
+        }
+
+        // Отправитель всегда видит своё RP-сообщение, даже если вне радиуса
+        if (!senderIncluded) {
+            sender.sendMessage(message);
         }
     }
 }

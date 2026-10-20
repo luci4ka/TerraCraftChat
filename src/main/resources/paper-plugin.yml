@@ -1,5 +1,5 @@
 name: Chat
-version: '1.0'
+version: '${version}'
 main: ru.net.terracraft.chat.TerraCraftChatPlugin
 api-version: '1.21'
 authors: [ luci ]
@@ -11,6 +11,12 @@ dependencies:
     CommandAPI:
       load: BEFORE
       required: true
+      join-classpath: true
     SkinsRestorer:
       load: BEFORE
-      required: true
+      required: false
+      join-classpath: false
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+      join-classpath: true
