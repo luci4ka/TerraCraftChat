@@ -1,68 +1,155 @@
+# ============================================================
+#  CHAT — Nachrichten
+# ============================================================
+
 chat:
+  # ===== Common =====
   prefix: "<gray>[<gold>TerraCraftChat<gray>] <reset>"
+  no-permission: "<red>Du hast keine Berechtigung dafür."
+  config-reloaded: "<green>Konfiguration neu geladen."
+  config-reload-failed: "<red>Konfiguration konnte nicht neu geladen werden. Siehe Konsole."
+
+  # ===== Channels =====
+  channel-no-access: "<red>Du hast keinen Zugriff auf diesen Kanal."
+  channel-unknown: "<red>Kanal '<id>' nicht gefunden."
+  channel-switched: "<gray>Aktiver Kanal: <yellow><channel></yellow>"
+  channel-reset: "<gray>Kanal auf Standard zurückgesetzt."
+
+  # ===== Nick =====
+  nick-empty: "<red>Nickname darf nicht leer sein."
+  nick-too-long: "<red>Nickname zu lang (max. 16)."
+  nick-set: "<green>Nickname gesetzt."
+  nick-reset: "<yellow>Nickname zurückgesetzt."
+  nick-invalid: "<red>Nickname enthält verbotene Tags."
+  nick-impersonation: "<red>Nickname entspricht Spieler <white><player></white>."
+  nick-reserved: "<red>Nickname '<player>' ist reserviert."
+
+  # ===== Ignore =====
+  ignore-enabled: "<gray>Du siehst keine Nachrichten mehr von <white><player><gray>."
+  ignore-disabled: "<gray>Du siehst wieder Nachrichten von <white><player><gray>."
+  cannot-ignore-self: "<red>Du kannst dich nicht selbst ignorieren."
+  ignore-list-empty: "<gray>Deine Ignorierliste ist leer."
+  ignore-list-header: "<gray>Ignoriert (<count>):"
+  ignore-list-entry: "<dark_gray> • <white><player>"
+  ignore-invalid-time: "<red>Ungültiges Zeitformat. Beispiel: 30m, 2h, 1d, 1w"
+  ignore-enabled-temp: "<green>Ignorierst <white><player></white> für <yellow><time></yellow> Min."
 
   # ===== /msg, /reply =====
   player-not-found: "<red>Spieler <white><player> <red>nicht gefunden."
   cannot-message-self: "<red>Du kannst dir selbst keine Nachricht senden."
   target-ignoring-you: "<red>Dieser Spieler ignoriert deine Nachrichten."
-  you-ignoring-target: "<red>Du ignorierst diesen Spieler. Nutze /ignore <player>, um aufzuhören."
+  you-ignoring-target: "<red>Du ignorierst diesen Spieler. Nutze /ignore <player>."
   no-reply-target: "<red>Du hast niemanden, dem du antworten kannst."
 
-  # ===== Ignorieren =====
-  ignore-enabled: "<gray>Du siehst keine Nachrichten mehr von <white><player><gray>."
-  ignore-disabled: "<gray>Du siehst wieder Nachrichten von <white><player><gray>."
-  already-ignored: "<red>Spieler <white><player> <red>ist bereits in deiner Ignorierliste."
-  not-ignored: "<red>Spieler <white><player> <red>ist nicht in deiner Ignorierliste."
-  cannot-ignore-self: "<red>Du kannst dich nicht selbst ignorieren."
-
-  # ===== Allgemein =====
-  no-permission: "<red>Du hast keine Berechtigung dafür."
-  config-reloaded: "<green>Konfiguration neu geladen."
-
-  # ===== Social-Spy =====
+  # ===== Social spy =====
   socialspy-enabled: "<green>Social-Spy aktiviert. Du siehst jetzt alle privaten Nachrichten."
   socialspy-disabled: "<red>Social-Spy deaktiviert."
 
   # ===== Moderation =====
-  cooldown: "<red>Warte <white><seconds> <red>Sek. vor deiner nächsten Nachricht."
+  cooldown: "<red>Warte <white><seconds> <red>Sek. vor der nächsten Nachricht."
   duplicate: "<red>Spamme nicht dieselbe Nachricht!"
   similar: "<red>Spamme nicht mit ähnlichen Nachrichten!"
   flood: "<red>Zu viele wiederholte Zeichen!"
   crash: "<red>Nachricht enthält ungültige Zeichen."
   swear: "<red>Bitte verwende keine vulgäre Sprache."
   anti-ad: "<red>Werbung ist nicht erlaubt!"
-  thread-active: "<green>Antwortmodus aktiviert. Deine nächste Nachricht geht in den Thread."
-  thread-limit: "<red>Maximale Anzahl an Thread-Antworten erreicht."
-  reaction-invalid: "<red>Ungültige Reaktion."
+
+  # ===== Threads =====
+  thread-active: "<green>Antwortmodus aktiviert. Nächste Nachricht geht in den Thread."
+  thread-limit: "<red>Max. Anzahl an Thread-Antworten erreicht."
+  thread-no-access: "<red>Du hast diese Nachricht nicht gesehen und kannst nicht antworten."
+  thread-disabled: "<red>Threads sind deaktiviert."
+  thread-self-reply: "<red>Du kannst nicht auf deine eigene Nachricht antworten."
   thread-button-hover: "<gray>Im Thread antworten"
   thread-more: "<dark_gray>... <count> weitere Antworten"
   thread-replied: "<dark_gray>antwortete <target>"
-  thread-no-access: "<red>You did not see this message and cannot reply."
-  thread-disabled: "<red>Threads are disabled."
 
-  # ===== [inv] und [item] =====
+  # ===== Delete =====
+  delete-button-hover: "<red>Nachricht löschen"
+  delete-notice: "<red>--- Nachricht von <sender> gelöscht von <moderator> ---"
+  delete-disabled: "<red>Nachrichtenlöschung deaktiviert."
+  invalid-id: "<red>Ungültige Nachrichten-ID."
+  message-not-found: "<red>Nachricht nicht gefunden oder abgelaufen."
+
+  # ===== [inv] / [item] =====
   inv-self-not-allowed: "<red>Du kannst dein eigenes Inventar nicht über [inv] ansehen."
+  inv-token-invalid: "<red>Inventar-Link abgelaufen oder ungültig."
   item-hand-empty: "<gray>leer"
   inv-label: "<aqua>[Inventar]</aqua>"
-  inv-hover: "<gray>Klicke, um das Inventar von <white><player></white> zu sehen"
-  delete-button-hover: "<red>Diese Nachricht löschen"
-  delete-notice: "<red>--- Nachricht von <sender> gelöscht von <moderator> ---"
+  inv-hover: "<gray>Klick, um das Inventar von <white><player></white> zu sehen"
+
+  # ===== History =====
+  history-empty: "<gray>Spieler <white><player></white> hat keine Nachrichten."
+  history-header: "<gray>── Verlauf <white><player></white> — Seite <yellow><page></yellow>/<yellow><pages></yellow> (gesamt <yellow><count></yellow>) ──"
+  history-entry: "<dark_gray>[<gray><date> <white><time><dark_gray>] <gray>[<yellow><channel><gray>] <white><message>"
+  history-footer: "<gray>Nächste Seite: <yellow>/chat history <player> <page></yellow>"
+
+  # ===== Stats =====
+  stats-header: "<gray>── Statistik <white><player></white> ──"
+  stats-sent: "<gray>Gesendet: <green><count>"
+  stats-blocked: "<gray>Blockiert: <red><count>"
+  stats-swear: "<gray>Flüche: <yellow><count>"
+  stats-ads: "<gray>Werbung: <gold><count>"
+
+  # ===== Purge =====
+  purge-started: "<gray>Bereinigung von Nachrichten älter als <yellow><days></yellow> Tage gestartet (async)."
+
+  # ===== Reload =====
+  rules-reloaded: "<green>Moderationsregeln neu geladen."
+  games-reloaded: "<green>Spiele neu geladen."
+  emojis-reloaded: "<green>Emojis neu geladen."
+  lang-reloaded: "<green>Lokalisierungen neu geladen."
+
+  # ===== Chat Games toggle =====
+  chatgames-status: "<gray>Spiele: <yellow><state></yellow>, aktiv: <yellow><active></yellow>"
+  chatgames-state-on: "<green>an</green>"
+  chatgames-state-off: "<red>aus</red>"
+  chatgames-state-yes: "<green>ja</green>"
+  chatgames-state-no: "<gray>nein</gray>"
+  chatgames-on: "<green>Spiele aktiviert."
+  chatgames-off: "<red>Spiele deaktiviert."
+  chatgames-already-on: "<gray>Spiele sind bereits aktiviert."
+  chatgames-already-off: "<gray>Spiele sind bereits deaktiviert."
+
+  # ===== Groups =====
+  group-invalid-name: "<red>Gruppenname: 3-16 Zeichen, a-z, 0-9, _"
+  group-name-taken: "<red>Gruppe <white><name></white> existiert bereits."
+  group-create-failed: "<red>Gruppe konnte nicht erstellt werden."
+  group-created: "<green>Gruppe <white><name></white> erstellt. Du bist drin."
+  group-not-found: "<red>Gruppe nicht gefunden."
+  group-not-owner: "<red>Nur der Besitzer kann das tun."
+  group-not-member: "<red>Du bist kein Mitglied dieser Gruppe."
+  group-member-added: "<green>Spieler zu <white><group></white> hinzugefügt."
+  group-left: "<gray>Du hast <white><group></white> verlassen."
+  group-deleted: "<red>Gruppe <white><group></white> gelöscht."
+  group-active: "<gray>Aktive Gruppe: <white><name></white>. Sende über /chat group <name> <msg>"
+
+  # ===== Discord =====
+  discord-format: "**[Ankündigung]** <sender>: <message>"
+
+# ============================================================
+#  AUTOBROADCAST
+# ============================================================
 
 autobroadcast:
   rules: "<yellow>Vergiss nicht die Regeln zu lesen: <white>/rules"
   discord: "<yellow>Unser Discord: <white>discord.gg/terracraft"
   donate: "<yellow>Spenden kaufen: <white>/donate"
 
+# ============================================================
+#  CHAT GAMES
+# ============================================================
+
 chatgames:
   unscramble:
-    start: "<gold>[Spiel] <yellow>Entwirre das Wort: <white><word>"
+    start: "<gold>[Spiel] <yellow>Entwirre das Wort: <white><prompt>"
     win: "<green>[Spiel] <yellow><player> <green>hat das Wort <white><answer> <green>in <time> Sek. erraten!"
     timeout: "<red>[Spiel] Niemand hat geraten. Das Wort war: <white><answer>"
   quiz:
-    start: "<gold>[Quiz] <yellow><word>"
+    start: "<gold>[Quiz] <yellow><prompt>"
     win: "<green>[Quiz] <yellow><player> <green>antwortete: <white><answer> <green>(<time> Sek.)"
     timeout: "<red>[Quiz] Niemand hat geantwortet. Richtige Antwort: <white><answer>"
   math:
-    start: "<gold>[Mathe] <yellow>Löse: <white><word>"
+    start: "<gold>[Mathe] <yellow>Löse: <white><prompt>"
     win: "<green>[Mathe] <yellow><player> <green>antwortete: <white><answer> <green>(<time> Sek.)"
     timeout: "<red>[Mathe] Niemand hat gelöst. Antwort: <white><answer>"

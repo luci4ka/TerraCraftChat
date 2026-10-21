@@ -2,22 +2,30 @@ package ru.net.terracraft.chat.manager;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 import ru.net.terracraft.chat.TerraCraftChatPlugin;
 import ru.net.terracraft.chat.storage.StorageManager;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GroupManager {
 
+    private static final long MEMBERS_CACHE_TTL_MS = 30_000L; // 30 сек
+
     private final TerraCraftChatPlugin plugin;
     private final StorageManager storage;
 
-    // Активная группа игрока — /chat group <name> без сообщения → выбор активной
     private final Map<UUID, UUID> activeGroupByPlayer = new ConcurrentHashMap<>();
+
+    // Кэш участников: groupId → (memberIds, expiresAt)
+    private final Map<UUID, CachedMembers> membersCache = new ConcurrentHashMap<>();
+
+    private record CachedMembers(List<UUID> members, long expiresAt) {
+        boolean isValid() { return System.currentTimeMillis() < expiresAt; }
+    }
 
     public GroupManager(TerraCraftChatPlugin plugin, StorageManager storage) {
         this.plugin = plugin;
@@ -44,13 +52,35 @@ public class GroupManager {
         activeGroupByPlayer.remove(player.getUniqueId());
     }
 
-    /**
-     * Отправляет сообщение в группу всем онлайн-участникам.
-     */
-    public boolean sendToGroup(Player sender, StorageManager.GroupRow group, String message) {
-        List<UUID> members = storage.getGroupMembers(group.id());
+    /** Сбрасывает кэш участников (вызывать при add/remove/delete). */
+    public void invalidateCache(UUID groupId) {
+        if (groupId != null) membersCache.remove(groupId);
+    }
 
-        // Проверяем, что sender — участник
+    public void invalidateAllCache() {
+        membersCache.clear();
+    }
+
+    /**
+     * Возвращает участников группы. Кэш 30 сек — чтобы не дёргать БД
+     * на каждое сообщение в группе.
+     */
+    private List<UUID> getMembersCached(UUID groupId) {
+        CachedMembers cached = membersCache.get(groupId);
+        if (cached != null && cached.isValid()) {
+            return cached.members();
+        }
+        List<UUID> fresh = storage.getGroupMembers(groupId);
+        membersCache.put(groupId, new CachedMembers(
+                List.copyOf(fresh),
+                System.currentTimeMillis() + MEMBERS_CACHE_TTL_MS
+        ));
+        return fresh;
+    }
+
+    public boolean sendToGroup(Player sender, StorageManager.GroupRow group, String message) {
+        List<UUID> members = getMembersCached(group.id());
+
         if (!members.contains(sender.getUniqueId())) {
             return false;
         }
@@ -70,5 +100,10 @@ public class GroupManager {
             viewer.sendMessage(formatted);
         }
         return true;
+    }
+
+    /** Возвращает набор всех онлайн-групп (для дебага/плацехолдеров). */
+    public Set<UUID> getActiveGroupsSnapshot() {
+        return Set.copyOf(activeGroupByPlayer.values());
     }
 }

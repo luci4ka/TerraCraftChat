@@ -31,19 +31,11 @@ chat:
   ignore-list-empty: "<gray>Ваш игнор-лист пуст."
   ignore-list-header: "<gray>Игнорируемые (<count>):"
   ignore-list-entry: "<dark_gray> • <white><player>"
-  ignore-invalid-time: "<red>Неверный формат времени. Пример: 30m, 2h, 1d"
+  ignore-invalid-time: "<red>Неверный формат времени. Пример: 30m, 2h, 1d, 1w"
   ignore-enabled-temp: "<green>Игнорируешь <white><player></white> на <yellow><time></yellow> мин."
-  history-empty: "<gray>У игрока <white><player></white> нет сообщений в истории."
-  history-header: "<gray>── История <white><player></white> (последние <yellow><count></yellow>) ──"
-  history-entry: "<dark_gray>[<gray><date> <white><time><dark_gray>] <gray>[<yellow><channel><gray>] <white><message>"
-  stats-header: "<gray>── Статистика <white><player></white> ──"
-  stats-sent: "<gray>Отправлено: <green><count>"
-  stats-blocked: "<gray>Заблокировано: <red><count>"
-  stats-swear: "<gray>Мат поймано: <yellow><count>"
-  stats-ads: "<gray>Реклама поймана: <orange><count>"
-  purge-started: "<gray>Запущена очистка сообщений старше <yellow><days></yellow> дней (async)."
 
   # ===== /msg, /reply =====
+  player-not-found: "<red>Игрок <white><player> <red>не найден."
   cannot-message-self: "<red>Нельзя отправить сообщение самому себе."
   target-ignoring-you: "<red>Этот игрок игнорирует ваши сообщения."
   you-ignoring-target: "<red>Вы игнорируете этого игрока. Используйте /ignore <player>, чтобы перестать."
@@ -85,6 +77,52 @@ chat:
   item-hand-empty: "<gray>пусто"
   inv-label: "<aqua>[Инвентарь]</aqua>"
   inv-hover: "<gray>Нажми, чтобы посмотреть инвентарь <white><player></white>"
+
+  # ===== История =====
+  history-empty: "<gray>У игрока <white><player></white> нет сообщений в истории."
+  history-header: "<gray>── История <white><player></white> — стр. <yellow><page></yellow>/<yellow><pages></yellow> (всего <yellow><count></yellow>) ──"
+  history-entry: "<dark_gray>[<gray><date> <white><time><dark_gray>] <gray>[<yellow><channel><gray>] <white><message>"
+  history-footer: "<gray>Следующая страница: <yellow>/chat history <player> <page></yellow>"
+
+  # ===== Статистика =====
+  stats-header: "<gray>── Статистика <white><player></white> ──"
+  stats-sent: "<gray>Отправлено: <green><count>"
+  stats-blocked: "<gray>Заблокировано: <red><count>"
+  stats-swear: "<gray>Мат поймано: <yellow><count>"
+  stats-ads: "<gray>Реклама поймана: <gold><count>"
+
+  # ===== Purge =====
+  purge-started: "<gray>Запущена очистка сообщений старше <yellow><days></yellow> дней (async)."
+
+  # ===== Reload =====
+  rules-reloaded: "<green>Правила модерации перезагружены."
+  games-reloaded: "<green>Игры перезагружены."
+  emojis-reloaded: "<green>Эмодзи перезагружены."
+  lang-reloaded: "<green>Локализации перезагружены."
+
+  # ===== Chat Games toggle =====
+  chatgames-status: "<gray>Игры: <yellow><state></yellow>, активная: <yellow><active></yellow>"
+  chatgames-state-on: "<green>вкл</green>"
+  chatgames-state-off: "<red>выкл</red>"
+  chatgames-state-yes: "<green>да</green>"
+  chatgames-state-no: "<gray>нет</gray>"
+  chatgames-on: "<green>Игры включены."
+  chatgames-off: "<red>Игры выключены."
+  chatgames-already-on: "<gray>Игры уже включены."
+  chatgames-already-off: "<gray>Игры уже выключены."
+
+  # ===== Группы =====
+  group-invalid-name: "<red>Имя группы: 3-16 символов, a-z, 0-9, _"
+  group-name-taken: "<red>Группа <white><name></white> уже существует."
+  group-create-failed: "<red>Не удалось создать группу."
+  group-created: "<green>Группа <white><name></white> создана. Ты в ней."
+  group-not-found: "<red>Группа не найдена."
+  group-not-owner: "<red>Только владелец может это делать."
+  group-not-member: "<red>Ты не участник этой группы."
+  group-member-added: "<green>Игрок добавлен в <white><group></white>."
+  group-left: "<gray>Ты вышел из <white><group></white>."
+  group-deleted: "<red>Группа <white><group></white> удалена."
+  group-active: "<gray>Активная группа: <white><name></white>. Пиши в неё через /chat group <name> <msg>"
 
   # ===== Discord =====
   discord-format: "**[Объявление]** <sender>: <message>"

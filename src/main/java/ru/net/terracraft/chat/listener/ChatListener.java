@@ -82,15 +82,13 @@ public class ChatListener implements Listener {
         // Блокирующие случаи — сообщение игроку в main
         if (result.result() != ChatModerator.Result.OK
                 && result.result() != ChatModerator.Result.SWEAR) {
-            // Статистика блокировок (async, не блокирует)
             var storage = plugin.getStorageManager();
             if (storage != null) {
                 switch (result.result()) {
-                    case SWEAR_BLOCK -> storage.incrementStat(senderId, "swear_caught");
-                    case ADVERTISEMENT -> storage.incrementStat(senderId, "ads_caught");
-                    default -> {}
+                    case SWEAR_BLOCK -> storage.incrementStats(senderId, "messages_blocked", "swear_caught");
+                    case ADVERTISEMENT -> storage.incrementStats(senderId, "messages_blocked", "ads_caught");
+                    default -> storage.incrementStats(senderId, "messages_blocked");
                 }
-                storage.incrementStat(senderId, "messages_blocked");
             }
 
             plugin.getServer().getScheduler().runTask(plugin, () -> {

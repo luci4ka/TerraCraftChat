@@ -1,5 +1,6 @@
 package ru.net.terracraft.chat.manager;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.net.terracraft.chat.model.Channel;
@@ -75,21 +76,28 @@ public class ChannelManager {
     }
 
     /**
-     * Предзагрузка активного канала игрока при входе.
-     * Убирает sync DB read из async-чата.
+     * Асинхронно подгружает активный канал при входе.
+     * До загрузки resolve() вернёт defaultChannel.
      */
     public void preload(Player player) {
         UUID uuid = player.getUniqueId();
         if (activeByPlayer.containsKey(uuid)) return;
 
-        String id = storage.getActiveChannel(uuid);
-        if (id != null) {
-            activeByPlayer.put(uuid, id);
-        }
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                String id = storage.getActiveChannel(uuid);
+                if (id == null) return;
+                if (!player.isOnline()) return;
+
+                // Если активный канал уже установлен (пока грузились) — не перезаписываем
+                activeByPlayer.putIfAbsent(uuid, id);
+            } catch (Exception e) {
+                plugin.getLogger().warning("ChannelManager.preload async failed: " + e.getMessage());
+            }
+        });
     }
 
     public Resolved resolve(Player sender, String message) {
-        // 1. Префиксы — длинные первыми
         List<Channel> pref = this.prefixed;
         for (Channel ch : pref) {
             String stripped = ch.stripPrefix(message);
@@ -98,18 +106,15 @@ public class ChannelManager {
             }
         }
 
-        // 2. Активный канал (без sync DB — preload в onJoin)
         String activeId = activeByPlayer.get(sender.getUniqueId());
         Channel active = get(activeId);
         if (active != null) {
             if (canUse(sender, active)) {
                 return new Resolved(active, message);
             }
-            // Право пропало — сбрасываем (кэш + БД async)
             clearActive(sender);
         }
 
-        // 3. По умолчанию
         return new Resolved(defaultChannel, message);
     }
 

@@ -8,16 +8,8 @@
 #   reason         — причина (для логов, опционально)
 #   cancel-message — отменять ли сообщение (true — блок, false — пропустить)
 #
-# Примеры команд для разных плагинов наказаний:
-#   LiteBans:    "litebans:mute %player% 30m Реклама"
-#                "litebans:tempban %player% 1d Реклама"
-#   AdvancedBan: "tempban %player% 1d Реклама"
-#                "mute %player% Реклама"
-#   LibertyBans: "mute %player% 30m Реклама"
-#   Essentials:  "mute %player%"
-#
-# ВАЖНО: команда выполняется от консоли, поэтому префикс плагина
-# (например, "litebans:") не обязателен, если команда не конфликтует.
+# ВАЖНО: мат (swearing) уже обрабатывается ChatModerator (цензура),
+# поэтому отдельное правило для мата НЕ нужно.
 
 rules:
   advertisement:
@@ -25,12 +17,6 @@ rules:
     command: "mute %player% 30m Реклама в чате"
     reason: "Реклама"
     cancel-message: true
-
-  swearing:
-    pattern: "(?i)(хуй|пизда|блядь|ебать|сука)"
-    command: "warn %player% Нецензурная лексика"
-    reason: "Мат"
-    cancel-message: false   # мат цензурируется, не блокируется
 
   caps_abuse:
     pattern: "^[А-ЯA-Z\\s!?.]{10,}$"

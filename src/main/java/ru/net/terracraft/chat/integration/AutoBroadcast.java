@@ -16,6 +16,8 @@ import java.util.Random;
 
 public class AutoBroadcast {
 
+    private static final String KEY_PREFIX = "@key:";
+
     private final JavaPlugin plugin;
     private ChatConfig config;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
@@ -34,13 +36,9 @@ public class AutoBroadcast {
         this.config = config;
     }
 
-    // ===== Управление =====
-
     public void start() {
         List<String> messages = config.autobroadcast().messages();
-        if (messages.isEmpty()) {
-            return;
-        }
+        if (messages.isEmpty()) return;
 
         rebuildQueue();
 
@@ -67,8 +65,6 @@ public class AutoBroadcast {
         start();
     }
 
-    // ===== Внутреннее =====
-
     private void rebuildQueue() {
         queue.clear();
         queue.addAll(config.autobroadcast().messages());
@@ -85,39 +81,50 @@ public class AutoBroadcast {
         }
 
         String raw = queue.remove(0);
+        Component message = parseMessage(raw);
 
-        Component message;
-
-        // Если строка — ключ перевода (содержит точку и не содержит пробелов/MiniMessage-тегов)
-        if (isTranslationKey(raw)) {
-            message = Component.translatable(raw);
-        } else {
-            // Fallback: MiniMessage или legacy
-            try {
-                message = miniMessage.deserialize(raw);
-            } catch (Exception ex) {
-                message = legacySerializer.deserialize(raw);
-            }
-        }
-
-        // Отправляем каждому игроку отдельно, чтобы перевод подставился по локали клиента
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.sendMessage(message);
         }
 
-        // Логирование
         if (plugin instanceof TerraCraftChatPlugin tcc && tcc.getChatLogger() != null) {
             tcc.getChatLogger().log("AUTOBROADCAST", "CONSOLE", null, raw);
         }
     }
 
     /**
-     * Проверяет, является ли строка ключом перевода.
-     * Ключ содержит точку, не содержит пробелов и MiniMessage-тегов.
+     * Разбор строки:
+     *  - "@key:xxx"    → Component.translatable("xxx")
+     *  - "<gold>xxx"   → MiniMessage
+     *  - "&6xxx"       → legacy &-codes
+     *
+     * Старые конфиги (без @key:) — fallback на эвристику:
+     *   содержит "." и нет пробелов → ключ перевода.
      */
-    private boolean isTranslationKey(String raw) {
-        return raw != null
-                && raw.contains(".")
+    private Component parseMessage(String raw) {
+        if (raw == null || raw.isEmpty()) return Component.empty();
+
+        // 1. Явный префикс
+        if (raw.startsWith(KEY_PREFIX)) {
+            String key = raw.substring(KEY_PREFIX.length()).trim();
+            return Component.translatable(key);
+        }
+
+        // 2. Legacy fallback (обратная совместимость)
+        if (looksLikeTranslationKey(raw)) {
+            return Component.translatable(raw);
+        }
+
+        // 3. MiniMessage → legacy
+        try {
+            return miniMessage.deserialize(raw);
+        } catch (Exception ex) {
+            return legacySerializer.deserialize(raw);
+        }
+    }
+
+    private boolean looksLikeTranslationKey(String raw) {
+        return raw.contains(".")
                 && !raw.contains(" ")
                 && !raw.contains("<")
                 && !raw.contains("&");

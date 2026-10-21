@@ -5,7 +5,6 @@ import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.PlayerProfileArgument;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.translation.Argument;
-import org.bukkit.entity.Player;
 import ru.net.terracraft.chat.TerraCraftChatPlugin;
 import ru.net.terracraft.chat.util.MessageUtil;
 
@@ -45,16 +44,22 @@ public class ChatStatsCommand {
 
                             var stats = plugin.getStorageManager().getPlayerStats(targetId);
 
-                            sender.sendMessage(Component.translatable("chat.stats-header",
-                                    Argument.string("player", targetName)));
-                            sender.sendMessage(Component.translatable("chat.stats-sent",
-                                    Argument.string("count", String.valueOf(stats.messagesSent()))));
-                            sender.sendMessage(Component.translatable("chat.stats-blocked",
-                                    Argument.string("count", String.valueOf(stats.messagesBlocked()))));
-                            sender.sendMessage(Component.translatable("chat.stats-swear",
-                                    Argument.string("count", String.valueOf(stats.swearCaught()))));
-                            sender.sendMessage(Component.translatable("chat.stats-ads",
-                                    Argument.string("count", String.valueOf(stats.adsCaught()))));
+                            Component result = Component.translatable("chat.stats-header",
+                                            Argument.string("player", targetName))
+                                    .append(Component.newline())
+                                    .append(Component.translatable("chat.stats-sent",
+                                            Argument.string("count", String.valueOf(stats.messagesSent()))))
+                                    .append(Component.newline())
+                                    .append(Component.translatable("chat.stats-blocked",
+                                            Argument.string("count", String.valueOf(stats.messagesBlocked()))))
+                                    .append(Component.newline())
+                                    .append(Component.translatable("chat.stats-swear",
+                                            Argument.string("count", String.valueOf(stats.swearCaught()))))
+                                    .append(Component.newline())
+                                    .append(Component.translatable("chat.stats-ads",
+                                            Argument.string("count", String.valueOf(stats.adsCaught()))));
+
+                            sender.sendMessage(result);
                         })
                 )
                 .register();

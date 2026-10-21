@@ -4,7 +4,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.net.terracraft.chat.storage.StorageManager;
 
-import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,7 +14,6 @@ public class SocialSpyManager {
 
     public SocialSpyManager(JavaPlugin plugin, StorageManager storage) {
         this.storage = storage;
-        // Загружаем при старте
         this.enabled.addAll(storage.getAllSocialSpy());
     }
 
@@ -44,7 +42,8 @@ public class SocialSpyManager {
         storage.setSocialSpy(player.getUniqueId(), false);
     }
 
+    /** Snapshot — безопасно итерировать, даже если кто-то toggle'ит параллельно. */
     public Set<UUID> getAll() {
-        return Collections.unmodifiableSet(enabled);
+        return Set.copyOf(enabled);
     }
 }

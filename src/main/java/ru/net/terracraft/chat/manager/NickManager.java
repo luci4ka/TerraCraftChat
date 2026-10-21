@@ -1,11 +1,7 @@
 package ru.net.terracraft.chat.manager;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
-import org.bukkit.persistence.PersistentDataContainer;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.net.terracraft.chat.format.NickFormat;
 import ru.net.terracraft.chat.storage.StorageManager;
@@ -17,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NickManager {
     private final StorageManager storage;
     private final Map<UUID, String> cache = new ConcurrentHashMap<>();
-    private static final MiniMessage SAFE_MM = MiniMessage.miniMessage();
 
     public NickManager(JavaPlugin plugin, StorageManager storage) {
         this.storage = storage;
@@ -46,11 +41,6 @@ public class NickManager {
         return cache.get(player.getUniqueId());
     }
 
-    /**
-     * Возвращает Component из ника, безопасно распарсенный.
-     * Только цвета и форматирование — без click/hover/insertion.
-     * null — если ника нет.
-     */
     public Component getNickComponent(Player player) {
         String raw = cache.get(player.getUniqueId());
         if (raw == null || raw.isEmpty()) return null;

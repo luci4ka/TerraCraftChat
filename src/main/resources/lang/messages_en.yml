@@ -31,8 +31,11 @@ chat:
   ignore-list-empty: "<gray>Your ignore list is empty."
   ignore-list-header: "<gray>Ignored (<count>):"
   ignore-list-entry: "<dark_gray> • <white><player>"
+  ignore-invalid-time: "<red>Invalid time format. Example: 30m, 2h, 1d"
+  ignore-enabled-temp: "<green>Ignoring <white><player></white> for <yellow><time></yellow> min."
 
   # ===== /msg, /reply =====
+  player-not-found: "<red>Player <white><player> <red>not found."
   cannot-message-self: "<red>You cannot message yourself."
   target-ignoring-you: "<red>This player is ignoring your messages."
   you-ignoring-target: "<red>You are ignoring this player. Use /ignore <player> to stop."
@@ -74,6 +77,50 @@ chat:
   item-hand-empty: "<gray>empty"
   inv-label: "<aqua>[Inventory]</aqua>"
   inv-hover: "<gray>Click to view <white><player></white>'s inventory"
+
+  # ===== History / Stats / Purge =====
+  history-empty: "<gray>Player <white><player></white> has no messages in history."
+  history-header: "<gray>── History <white><player></white> — page <yellow><page></yellow>/<yellow><pages></yellow> (total <yellow><count></yellow>) ──"
+  history-entry: "<dark_gray>[<gray><date> <white><time><dark_gray>] <gray>[<yellow><channel><gray>] <white><message>"
+  history-footer: "<gray>Next page: <yellow>/chat history <player> <page></yellow>"
+
+  stats-header: "<gray>── Stats <white><player></white> ──"
+  stats-sent: "<gray>Sent: <green><count>"
+  stats-blocked: "<gray>Blocked: <red><count>"
+  stats-swear: "<gray>Swear caught: <yellow><count>"
+  stats-ads: "<gray>Ads caught: <gold><count>"
+
+  purge-started: "<gray>Purge of messages older than <yellow><days></yellow> days started (async)."
+
+  # ===== Reload subcommands =====
+  rules-reloaded: "<green>Moderation rules reloaded."
+  games-reloaded: "<green>Games reloaded."
+  emojis-reloaded: "<green>Emojis reloaded."
+  lang-reloaded: "<green>Locales reloaded."
+
+  # ===== Chat games toggle =====
+  chatgames-status: "<gray>Games: <yellow><state></yellow>, active: <yellow><active></yellow>"
+  chatgames-state-on: "<green>on</green>"
+  chatgames-state-off: "<red>off</red>"
+  chatgames-state-yes: "<green>yes</green>"
+  chatgames-state-no: "<gray>no</gray>"
+  chatgames-on: "<green>Games enabled."
+  chatgames-off: "<red>Games disabled."
+  chatgames-already-on: "<gray>Games are already enabled."
+  chatgames-already-off: "<gray>Games are already disabled."
+
+  # ===== Groups =====
+  group-invalid-name: "<red>Group name: 3-16 chars, a-z, 0-9, _"
+  group-name-taken: "<red>Group <white><name></white> already exists."
+  group-create-failed: "<red>Failed to create group."
+  group-created: "<green>Group <white><name></white> created."
+  group-not-found: "<red>Group not found."
+  group-not-owner: "<red>Only the owner can do this."
+  group-not-member: "<red>You are not a member of this group."
+  group-member-added: "<green>Player added to <white><group></white>."
+  group-left: "<gray>You left <white><group></white>."
+  group-deleted: "<red>Group <white><group></white> deleted."
+  group-active: "<gray>Active group: <white><name></white>."
 
   # ===== Discord =====
   discord-format: "**[Broadcast]** <sender>: <message>"

@@ -1,3 +1,4 @@
+
 <div align="center">
 
 # TerraCraftChat
@@ -5,10 +6,10 @@
 **Современный чат-плагин для Paper 1.21.11**
 
 [![Paper](https://img.shields.io/badge/Paper-1.21.11-blue?style=for-the-badge)](https://papermc.io/)
-[![Java](https://img.shields.io/badge/Java-21+-orange?style=for-the-badge)](https://adoptium.net/)
+[![Java](https://img.shields.io/badge/Java-25+-orange?style=for-the-badge)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-Локальный и глобальный чат, ЛС, треды, модерация, эмодзи, головы игроков, Discord-мост и многое другое.
+Локальный и глобальный чат, ЛС, треды, модерация, эмодзи, головы игроков, Discord-мост, группы, статистика и многое другое.
 
 </div>
 
@@ -21,6 +22,7 @@
 - **Локальный чат** — слышат только игроки в радиусе (по умолчанию 100 блоков)
 - **Глобальный чат** — префикс `!` для сообщений всему серверу
 - **Staff-канал** — префикс `#` (только для staff, никогда не утекает в Discord)
+- **Групповые чаты** — свои приватные группы (`/chat create-group`, `/chat group <name> <msg>`)
 - **RP-команды** `/me`, `/do`, `/try`, `/roll` — для ролевой игры
 - **Личные сообщения** `/msg`, `/reply` с кликабельными никами
 - **Треды** — отвечайте на конкретные сообщения кликом `[↩]`
@@ -35,53 +37,44 @@
 - **Кликабельные ссылки** — авто-детект URL
 - **Кликабельные ники** — `/msg <ник>` по клику в чате
 - **Упоминания** `@Ник` — звук и подсветка
+- **Префиксы/суффиксы LuckPerms** — с поддержкой `&`-кодов и MiniMessage
 
 ### 🛡️ Модерация
 - **Cooldown** между сообщениями
 - **Анти-дубль** — блок повторов
-- **Levenshtein** — блок похожих сообщений (например, изменённых на 1 букву)
-- **Анти-флуд** — блок повторяющихся символов (`ааааааа`)
+- **Levenshtein** — блок похожих сообщений
+- **Анти-флуд** — блок повторяющихся символов
 - **Anti-crash** — блок control-символов и Unicode-бомб
-- **Фильтр мата** — замена на `***` или блок при превышении лимита
-  - NFKC-нормализация, замена латинских омоглифов, удаление пробелов между буквами
+- **Фильтр мата** — замена на `***` или блок при превышении лимита (NFKC, омоглифы)
 - **Анти-реклама** — IP, ссылки, домены (с whitelist)
-  - Нормализация `evil . com` → `evil.com`, защита от `terracraft.net.ru evil.com`
 - **Bypass-права** для админов на каждую проверку
 - **Асинхронная проверка** — тяжёлые regex/Levenshtein в async-потоке
 
 ### 🔧 Инструменты
-- **Удаление сообщений** — клик `[✖]` для модераторов
-  - Перерисовка чата через `ChatRedrawManager` (работает для онлайн + офлайн)
-  - Очистка + повторная отправка истории без удалённого
+- **Удаление сообщений** — клик `[✖]` для модераторов (с перерисовкой чата)
 - **Соц-шпион** `/socialspy` — админы видят все ЛС
 - **Broadcast** `/broadcast` — объявление на весь сервер (+ в Discord)
 - **AutoBroadcast** — авто-объявления по расписанию (мультиязычные)
-- **Chat Games** — мини-игры в чате (Unscramble, Quiz, Math)
-  - `ShuffleBag` — слова/вопросы не повторяются, пока не кончатся
-  - Per-game `timeout`, `weight`, `rewards`
-  - Cooldown на неправильные ответы (3 сек)
+- **История чата** — `/chat history <ник>` с пагинацией
+- **Статистика** — `/chat stats [ник]` + PAPI-плейсхолдеры
+- **Purge** — `/chat purge <дни>` для очистки старых сообщений
+- **Chat Games** — мини-игры в чате (Unscramble, Quiz, Math) с toggle (`/chatgames`)
 - **Локальные ответы** — бот отвечает на вопросы из конфига
-- **Логирование** — все сообщения в `logs/chat-YYYY-MM-DD.log`
-  - Асинхронная запись, ротация по датам, санитизация `\n`/`\r`
+- **Логирование** — все сообщения в `logs/chat-YYYY-MM-DD.log` (async, ротация, санитизация)
 
 ### 🌍 Мультиязычность
 - Русский, английский, немецкий из коробки
 - Автоопределение языка клиента игрока
-- Fallback на английский, если перевода нет
-- **Overlay**: jar-база + `lang/messages_*.yml` игрока (новые ключи всегда есть)
-- Легко добавить новый язык — просто новый `messages_xx.yml`
+- Fallback на английский
+- **Overlay**: jar-база + `lang/messages_*.yml` игрока
 
 ### 🔌 Интеграции
-- **PlaceholderAPI** — плейсхолдеры `%terracraftchat_...%`
-  - `%terracraftchat_nick_formatted%` — ник с MiniMessage-тегами (для таба)
-  - `%terracraftchat_nick%` — plain text
-  - `%terracraftchat_channel%`, `%terracraftchat_channel_prefix%`
-  - `%terracraftchat_ignoring_count%`, `%terracraftchat_socialspy%`
-  - `%terracraftchat_thread_active%`, `%terracraftchat_channels%`
-  - `%terracraftchat_threads_enabled%`, `%terracraftchat_games_count%`
+- **MineSQL** — единый пул соединений для БД (MariaDB/MySQL/H2)
+- **PlaceholderAPI** — плейсхолдеры `%terracraftchat_...%` (включая `stats_sent`, `stats_blocked`, `stats_swear`, `stats_ads`)
 - **SkinsRestorer** — головы игроков в чате
-- **Discord Webhook** — глобальный чат уходит в Discord (с `allowed_mentions` против `@everyone`)
+- **Discord Webhook** — глобальный чат уходит в Discord (с `allowed_mentions`)
 - **CommandAPI** — регистрация команд через Paper Brigadier
+- **Vault** — (опционально) для будущих фич
 
 ---
 
@@ -94,18 +87,34 @@
 | **Paper (или форк)** | 1.21.11+ |
 | **Java** | 21+ |
 | **CommandAPI** | 12.1.0+ (обязательно) |
+| **MineSQL** | 1.4.2+ (обязательно) |
 | **PlaceholderAPI** | 2.11.6+ (рекомендуется) |
-| **SkinsRestorer** | 15.9.0+ (опционально, для голов) |
+| **SkinsRestorer** | 15.9.0+ (опционально) |
 
 ### Шаги
 
 1. Скачай последний релиз `TerraCraftChat-x.x.x-all.jar` со страницы [Releases](../../releases)
-2. Положи JAR в папку `plugins/` твоего сервера
-3. Установи [CommandAPI](https://github.com/CommandAPI/CommandAPI/releases) 12.1.0+ в `plugins/`
-4. (Опционально) Установи [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) и [SkinsRestorer](https://www.spigotmc.org/resources/skinsrestorer.2124/)
-5. Перезапусти сервер
-6. Настрой `plugins/TerraCraftChat/config.yml` под свой сервер
-7. Выполни `/chat reload`
+2. Положи JAR в папку `plugins/`
+3. Установи [CommandAPI](https://github.com/CommandAPI/CommandAPI/releases) 12.1.0+
+4. Установи [MineSQL](https://github.com/CarmJos/MineSQL/releases) 1.4.2+
+5. (Опционально) Установи [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) и [SkinsRestorer](https://www.spigotmc.org/resources/skinsrestorer.2124/)
+6. Настрой `plugins/MineSQL/config.yml` (секция `terracraft-chat`) для подключения к БД
+7. Перезапусти сервер
+8. Настрой `plugins/TerraCraftChat/config.yml`
+9. Выполни `/chat reload`
+
+### Пример `plugins/MineSQL/config.yml`
+
+```yaml
+databases:
+  "terracraft-chat":
+    driver-type: mariadb
+    host: 127.0.0.1
+    port: 3306
+    database: terra_core
+    username: terra
+    password: qazwsx123
+```
 
 ---
 
@@ -116,32 +125,50 @@
 | Команда | Алиасы | Описание | Право |
 |---|---|---|---|
 | `/msg <ник> <текст>` | `/tell`, `/w`, `/whisper` | Личное сообщение | `terracraftchat.msg` |
-| `/reply <текст>` | `/r` | Ответить последнему собеседнику | `terracraftchat.reply` |
-| `/ignore <ник>` | — | Игнорировать игрока (тоггл) | `terracraftchat.ignore` |
+| `/reply <текст>` | `/r` | Ответить последнему | `terracraftchat.reply` |
+| `/ignore <ник> [время]` | — | Игнорировать (можно на время: `30m`, `1h`, `1d`, `1w`) | `terracraftchat.ignore` |
 | `/ignore list` | — | Список игнорируемых | `terracraftchat.ignore` |
-| `/channel <id>` | — | Переключить активный канал | — |
-| `/channel reset` | — | Сбросить на канал по умолчанию | — |
-| `/nick <ник>` | — | Установить кастомный ник | `terracraftchat.nick` |
+| `/channel <id>` | — | Переключить канал | — |
+| `/channel reset` | — | Сбросить на дефолтный | — |
+| `/nick <ник>` | — | Кастомный ник | `terracraftchat.nick` |
 | `/nickreset` | — | Сбросить ник | `terracraftchat.nick` |
-| `/me <действие>` | — | RP-действие от первого лица | — |
-| `/do <описание>` | — | RP-описание от третьего лица | — |
-| `/try <действие>` | — | RP-попытка (успех/провал) | — |
+| `/me <действие>` | — | RP-действие | — |
+| `/do <описание>` | — | RP-описание | — |
+| `/try <действие>` | — | RP-попытка | — |
 | `/roll [макс]` | — | Бросок кубика | — |
+
+### Группы
+
+| Команда | Описание | Право |
+|---|---|---|
+| `/chat create-group <имя>` | Создать группу | `terracraftchat.group.create` |
+| `/chat invite <группа> <ник>` | Пригласить | `terracraftchat.group.invite` |
+| `/chat leave <группа>` | Выйти | `terracraftchat.group.leave` |
+| `/chat delete <группа>` | Удалить (владелец) | `terracraftchat.group.delete` |
+| `/chat group <группа> [текст]` | Отправить / активировать | `terracraftchat.group.use` |
 
 ### Модератору
 
 | Команда | Описание | Право |
 |---|---|---|
-| `/socialspy` (`/spy`) | Вкл/выкл режим соц-шпиона | `terracraftchat.socialspy` |
-| `/chat_delete <uuid>` | Удалить сообщение (клик `[✖]`) | `terracraftchat.moderator` |
-| `/broadcast <текст>` (`/bc`, `/announce`, `/tcbroadcast`) | Объявление на весь сервер | `terracraftchat.broadcast` |
-| `/inv_show player <ник>` | Просмотр инвентаря игрока | `terracraftchat.inv.admin` |
+| `/socialspy` (`/spy`) | Вкл/выкл соц-шпион | `terracraftchat.socialspy` |
+| `/chat_delete <uuid>` | Удалить сообщение | `terracraftchat.moderator` |
+| `/broadcast <текст>` | Объявление | `terracraftchat.broadcast` |
+| `/inv_show player <ник>` | Инвентарь игрока | `terracraftchat.inv.admin` |
 
 ### Админу
 
 | Команда | Алиасы | Описание | Право |
 |---|---|---|---|
-| `/chat reload` | `/tcc reload` | Перезагрузить конфиг | `terracraftchat.admin` |
+| `/chat reload` | `/tcc reload` | Всё | `terracraftchat.admin` |
+| `/chat reload rules` | — | Только `rules.yml` | `terracraftchat.admin` |
+| `/chat reload games` | — | Только `games.yml` | `terracraftchat.admin` |
+| `/chat reload emojis` | — | Только `emojis.yml` | `terracraftchat.admin` |
+| `/chat reload lang` | — | Только локализации | `terracraftchat.admin` |
+| `/chat history <ник> [limit] [page]` | — | История с пагинацией | `terracraftchat.admin` |
+| `/chat stats [ник]` | — | Статистика | `terracraftchat.stats` |
+| `/chat purge <дни>` | — | Очистка старого | `terracraftchat.admin` |
+| `/chatgames [on/off/toggle]` | `/cg` | Управление играми | `terracraftchat.admin` |
 
 ---
 
@@ -150,56 +177,50 @@
 ### Основные
 | Право | По умолчанию | Описание |
 |---|---|---|
-| `terracraftchat.msg` | `true` | Доступ к `/msg` |
-| `terracraftchat.reply` | `true` | Доступ к `/reply` |
-| `terracraftchat.ignore` | `true` | Доступ к `/ignore` |
-| `terracraftchat.thread` | `true` | Отвечать в треды через `[↩]` |
+| `terracraftchat.msg` | `true` | `/msg` |
+| `terracraftchat.reply` | `true` | `/reply` |
+| `terracraftchat.ignore` | `true` | `/ignore` |
+| `terracraftchat.thread` | `true` | Треды |
 
 ### Контент
 | Право | По умолчанию | Описание |
 |---|---|---|
-| `terracraftchat.emoji` | `true` | Использовать `:эмодзи:` |
-| `terracraftchat.item` | `true` | Использовать `[item]` |
-| `terracraftchat.inv` | `true` | Использовать `[inv]` |
-| `terracraftchat.inv.admin` | OP | `/inv_show player <ник>` |
-| `terracraftchat.color` | **`false`** | Использовать `&`-коды и hex (для донатеров) |
-| `terracraftchat.nick` | OP | Устанавливать кастомный ник |
+| `terracraftchat.emoji` | `true` | `:эмодзи:` |
+| `terracraftchat.item` | `true` | `[item]` |
+| `terracraftchat.inv` | `true` | `[inv]` |
+| `terracraftchat.inv.admin` | OP | `/inv_show player` |
+| `terracraftchat.color` | **`false`** | `&`-коды и hex |
+| `terracraftchat.nick` | OP | `/nick` |
 
 ### Модерация и админ
 | Право | По умолчанию | Описание |
 |---|---|---|
-| `terracraftchat.moderator` | OP | Удалять сообщения кликом `[✖]` |
-| `terracraftchat.socialspy` | OP | Видеть все ЛС через `/socialspy` |
-| `terracraftchat.broadcast` | OP | Использовать `/broadcast` |
+| `terracraftchat.moderator` | OP | Удалять сообщения |
+| `terracraftchat.socialspy` | OP | `/socialspy` |
+| `terracraftchat.broadcast` | OP | `/broadcast` |
 | `terracraftchat.admin` | OP | `/chat reload` |
-| `terracraftchat.channel.staff` | OP | Доступ к staff-каналу (`#`) |
+| `terracraftchat.stats` | OP | `/chat stats` |
+| `terracraftchat.channel.staff` | OP | Staff-канал |
 
-### Bypass (обход проверок)
+### Группы
 | Право | По умолчанию | Описание |
 |---|---|---|
-| `terracraftchat.bypass.ads` | OP | Обход анти-рекламы |
-| `terracraftchat.bypass.swear` | OP | Обход фильтра мата |
-| `terracraftchat.bypass.levenshtein` | OP | Обход похожести |
-| `terracraftchat.bypass.flood` | OP | Обход анти-флуда |
-| `terracraftchat.bypass.crash` | OP | Обход anti-crash |
-| `terracraftchat.bypass.cooldown` | OP | Обход cooldown |
-| `terracraftchat.bypass.duplicate` | OP | Обход анти-дубля |
+| `terracraftchat.group.create` | `true` | Создание группы |
+| `terracraftchat.group.use` | `true` | Писать в группу |
+| `terracraftchat.group.invite` | `true` | Приглашать |
+| `terracraftchat.group.leave` | `true` | Выходить |
+| `terracraftchat.group.delete` | `true` | Удалять |
 
-### Пример выдачи прав через LuckPerms
-
-```bash
-# Донатерам — цвета
-/lp group vip permission set terracraftchat.color true
-
-# Модераторам — инструменты
-/lp group mod permission set terracraftchat.moderator true
-/lp group mod permission set terracraftchat.socialspy true
-/lp group mod permission set terracraftchat.broadcast true
-/lp group mod permission set terracraftchat.bypass.cooldown true
-
-# Staff-канал
-/lp group mod permission set terracraftchat.channel.staff true
-```
+### Bypass
+| Право | По умолчанию | Описание |
+|---|---|---|
+| `terracraftchat.bypass.ads` | OP | Анти-реклама |
+| `terracraftchat.bypass.swear` | OP | Мат |
+| `terracraftchat.bypass.levenshtein` | OP | Похожесть |
+| `terracraftchat.bypass.flood` | OP | Флуд |
+| `terracraftchat.bypass.crash` | OP | Anti-crash |
+| `terracraftchat.bypass.cooldown` | OP | Cooldown |
+| `terracraftchat.bypass.duplicate` | OP | Дубли |
 
 ---
 
@@ -207,32 +228,31 @@
 
 ### `config.yml` — основные настройки
 
-Конфиг разбит на **секции**:
-
 ```yaml
-formats:        # Форматы сообщений (local, global, staff, msg, reply, broadcast)
-channels:       # Каналы (local/global/staff + любые свои)
-threads:        # Треды (ответы на сообщения)
-display:        # Головы, [item], [inv], сообщения над головой
+formats:        # Форматы (local, global, staff, msg, reply, broadcast)
+channels:       # Каналы
+threads:        # Треды
+display:        # Головы, [item], [inv]
 mentions:       # @упоминания
 moderation:     # Cooldown, дубли, маты, реклама
 rp:             # /me, /do, /try, /roll
 socialSpy:      # Соц-шпион
-delete:         # Удаление сообщений
+delete:         # Удаление (cacheSize, ttl, clearLines)
 logging:        # Логирование
 discord:        # Discord webhook
 autobroadcast:  # Авто-объявления
 emoji:          # Эмодзи
-localAnswers:   # Локальные ответы бота
+localAnswers:   # Ответы бота
 chatGames:      # Мини-игры
+storage:        # Префикс таблиц (MineSQL)
 ```
 
 #### Пример: каналы
 
 ```yaml
 channels:
-  default-channel: "local"
-  rp-radius: 50
+  defaultChannel: "local"
+  rpRadius: 50
   channels:
     local:
       prefix: ""
@@ -240,21 +260,21 @@ channels:
       permission: ""
       format: "local"
       cooldown: 0
-      public-channel: true
+      publicChannel: true
     global:
       prefix: "!"
       range: -1
       permission: ""
       format: "global"
       cooldown: 0
-      public-channel: true
+      publicChannel: true
     staff:
       prefix: "#"
       range: -1
       permission: "terracraftchat.channel.staff"
       format: "staff"
       cooldown: 0
-      public-channel: false   # никогда не утекает в Discord
+      publicChannel: false   # никогда не утекает в Discord
 ```
 
 #### Пример: Discord
@@ -262,19 +282,15 @@ channels:
 ```yaml
 discord:
   enabled: true
-  webhook-url: "https://discord.com/api/webhooks/..."
+  webhookUrl: "https://discord.com/api/webhooks/..."
   username: "TerraCraft Chat"
   format: "**[%world%] %player%:** %message%"
-  broadcast-prefix: "**[Объявление]**"
-  interval-seconds: 5
-  max-buffer: 50
+  broadcastPrefix: "**[Объявление]**"
+  intervalSeconds: 5
+  maxBuffer: 50
 ```
 
-### `lang/messages_*.yml` — переводы
-
-- `messages_ru.yml` — русский
-- `messages_en.yml` — английский
-- `messages_de.yml` — немецкий
+### `lang/messages_*.yml`
 
 Формат:
 ```yaml
@@ -287,18 +303,15 @@ autobroadcast:
   rules: "<yellow>Не забывай читать правила: <white>/rules"
 ```
 
-**Overlay**: jar-база + `lang/` игрока. Если обновился jar, новые ключи подхватятся, а ваши переопределения — сохранятся.
-
-### `emojis.yml` — эмодзи
+### `emojis.yml`
 
 ```yaml
 smile: "☺"
 heart: "<red>❤</red>"
 diamond: "<sprite:items:item/diamond>"
-star: "<yellow>★</yellow>"
 ```
 
-### `games.yml` — Chat Games
+### `games.yml`
 
 ```yaml
 games:
@@ -306,21 +319,9 @@ games:
     type: "unscramble"
     weight: 5
     timeout: 30
-    words:
-      - "алмаз"
-      - "крипер"
+    words: ["алмаз", "крипер"]
     rewards:
       - "give {player} diamond 1"
-
-  quiz_minecraft:
-    type: "quiz"
-    weight: 3
-    timeout: 45
-    questions:
-      - question: "Какой моб взрывается?"
-        answers: ["крипер", "creeper"]
-    rewards:
-      - "give {player} emerald 3"
 
   math_easy:
     type: "math"
@@ -339,62 +340,47 @@ games:
 
 | Синтаксис | Что делает |
 |---|---|
-| `!сообщение` | Глобальный чат (видит весь сервер) |
-| `#сообщение` | Staff-чат (только с правом) |
-| `@Ник` | Упоминание игрока (звук + подсветка) |
-| `[item]` | Показать предмет из руки |
-| `[inv]` | Кликабельный `[Инвентарь]` (только чужой) |
-| `:smile:` | Кастомный эмодзи |
-| `&cКрасный` | Цвет (только с правом `terracraftchat.color`) |
+| `!сообщение` | Глобальный чат |
+| `#сообщение` | Staff-чат |
+| `@Ник` | Упоминание |
+| `[item]` | Предмет из руки |
+| `[inv]` | Инвентарь (клик) |
+| `:smile:` | Эмодзи |
+| `&cКрасный` | Цвет (с правом `terracraftchat.color`) |
 | `https://...` | Кликабельная ссылка |
-
-### 🧵 Треды
-
-Под каждым сообщением есть кнопка `[↩]`. Нажмите — и следующее ваше сообщение уйдёт **в тред** к этому сообщению. Все, кто видел родителя, увидят ответ.
-
-```
-[L] Steve: привет всем
-  [↩]
-  ↳ Alex: тоже привет
-  ↳ Maria: как дела?
-  ... ещё 2 ответов
-```
-
-- **Инлайн-тред** — до 3 последних ответов под родителем
-- **Один ответ за раз** — после ответа режим сбрасывается
-- **Лимит** — настраивается в `config.yml` → `threads.max-thread-replies`
-- **Запрет на своё сообщение** — нельзя отвечать на свой же родитель
 
 ---
 
 ## 🎨 PlaceholderAPI
 
-Плейсхолдеры доступны, если установлен PAPI:
-
 | Плейсхолдер | Описание |
 |---|---|
-| `%terracraftchat_nick_formatted%` | Ник с MiniMessage-тегами (для таба) |
-| `%terracraftchat_nick%` | Ник без тегов |
+| `%terracraftchat_nick_formatted%` | Ник с MiniMessage |
+| `%terracraftchat_nick%` | Ник plain |
 | `%terracraftchat_displayname_formatted%` | displayName с тегами |
 | `%terracraftchat_displayname%` | displayName plain |
 | `%terracraftchat_channel%` | Активный канал |
 | `%terracraftchat_channel_prefix%` | Префикс канала |
-| `%terracraftchat_ignoring_count%` | Сколько в игнор-листе |
+| `%terracraftchat_ignoring_count%` | Игнор-лист |
 | `%terracraftchat_socialspy%` | `true`/`false` |
 | `%terracraftchat_thread_active%` | `true`/`false` |
+| `%terracraftchat_stats_sent%` | Отправлено сообщений |
+| `%terracraftchat_stats_blocked%` | Заблокировано |
+| `%terracraftchat_stats_swear%` | Мат поймано |
+| `%terracraftchat_stats_ads%` | Реклама поймана |
 | `%terracraftchat_channels%` | Кол-во каналов (серверный) |
 | `%terracraftchat_threads_enabled%` | `true`/`false` (серверный) |
 | `%terracraftchat_games_count%` | Кол-во игр (серверный) |
+
+⚠️ Плейсхолдеры `stats_*` кэшируются на 10 секунд для производительности.
 
 ---
 
 ## 🔧 Сборка из исходников
 
 ### Требования
-- JDK 21+
-- Gradle 9.1.0+ (или используй wrapper)
-
-### Сборка
+- JDK 25+
+- Gradle 9.1.0+ (или wrapper)
 
 ```bash
 git clone https://github.com/luci4ka/TerraCraftChat.git
@@ -402,25 +388,26 @@ cd TerraCraftChat
 ./gradlew clean build
 ```
 
-Готовый JAR будет в `build/libs/Chat-x.x.x.jar`.
+Готовый JAR будет в `build/libs/`.
 
 ---
 
 ## 🐛 Известные проблемы
 
-- **SkinsRestorer** работает только с версии 15.9.0+ (для голов в чате)
-- **Инлайн-тред** обновляется только на момент отправки родителя — при ответе через 5 минут инлайн-панель не перерисуется (ограничение клиента Minecraft)
-- **Удаление** работает через перерисовку чата (очистка + повторная отправка истории). Для 200+ сообщений возможны «мигания»
-- **Офлайн-игроки** (без подписи) не получают «настоящее» удаление через `SignedMessage` — только перерисовку
+- **SkinsRestorer** — только 15.9.0+
+- **Инлайн-тред** — обновляется только на момент отправки родителя
+- **Удаление** — через перерисовку (200+ сообщений — возможны «мигания»)
+- **MineSQL** — обязателен; без него плагин не запустится
+- **Префиксы LuckPerms** — `%luckperms_prefix%` работает только если установлен expansion `Expansion-LuckPerms.jar` в PAPI
 
 ---
 
 ## 🤝 Вклад
 
-Pull requests приветствуются! Для крупных изменений сначала открой issue с описанием.
+Pull requests приветствуются! Для крупных изменений сначала открой issue.
 
 ### Что можно улучшить
-- Discord → игра (через бота, а не webhook)
+- Discord → игра (через бота)
 - Дополнительные языки
 - Тесты (MockBukkit)
 - Больше Chat Games (multiple-choice, reaction)
@@ -430,11 +417,7 @@ Pull requests приветствуются! Для крупных изменен
 
 ## 📄 Лицензия
 
-MIT License — используй, изменяй, распространяй свободно.
-
-Полный текст: [LICENSE](LICENSE)
-
----
+MIT License.
 
 <div align="center">
 

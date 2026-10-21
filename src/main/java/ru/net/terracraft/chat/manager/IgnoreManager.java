@@ -1,5 +1,6 @@
 package ru.net.terracraft.chat.manager;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.net.terracraft.chat.storage.StorageManager;
@@ -21,8 +22,30 @@ public class IgnoreManager {
         this.storage = storage;
     }
 
+    /**
+     * Загружает игнор-лист игрока АСИНХРОННО.
+     * До завершения isIgnoring(uuid, source) возвращает false.
+     * В 99% случаев это незаметно (загрузка < 100 мс).
+     */
     public void load(Player player) {
-        cache.put(player.getUniqueId(), storage.getIgnores(player.getUniqueId()));
+        UUID uuid = player.getUniqueId();
+
+        // Ставим пустой set сразу, чтобы isIgnoring не NPE
+        cache.putIfAbsent(uuid, ConcurrentHashMap.newKeySet());
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                Set<UUID> loaded = storage.getIgnores(uuid);
+
+                // Если игрок уже вышел — не кладём в кэш
+                if (!player.isOnline()) return;
+
+                cache.put(uuid, ConcurrentHashMap.newKeySet());
+                cache.get(uuid).addAll(loaded);
+            } catch (Exception e) {
+                plugin.getLogger().warning("IgnoreManager.load async failed: " + e.getMessage());
+            }
+        });
     }
 
     public void unload(Player player) {

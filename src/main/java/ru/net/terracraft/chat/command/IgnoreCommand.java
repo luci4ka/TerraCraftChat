@@ -112,6 +112,7 @@ public class IgnoreCommand {
                 case 'm' -> value * 60_000L;
                 case 'h' -> value * 3_600_000L;
                 case 'd' -> value * 86_400_000L;
+                case 'w' -> value * 604_800_000L;   // ← добавлено: недели
                 default -> -1L;
             };
         } catch (Exception e) {

@@ -34,10 +34,6 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
 
     private static TerraCraftChatPlugin instance;
 
-    // ============================================================
-    //  CONFIG & MANAGERS
-    // ============================================================
-
     private ChatConfig chatConfig;
 
     private TranslationManager translationManager;
@@ -64,6 +60,7 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     private ChatFormatter chatFormatter;
     private ChannelManager channelManager;
     private GroupManager groupManager;
+    private ChatPlaceholders chatPlaceholders;
     private StorageManager storageManager;
 
     // ============================================================
@@ -74,18 +71,15 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
-        // 0. BSTATS
         int pluginId = 34792;
         new Metrics(this, pluginId);
 
         registerPermissions();
         loadConfigs();
 
-        // 1. Storage (H2 / MySQL) — ДО всех менеджеров
         this.storageManager = new StorageManager(this);
-        this.storageManager.open();
+        this.storageManager.init();
 
-        // 2. Managers without dependencies
         this.translationManager = new TranslationManager(this);
         this.translationManager.loadAll();
 
@@ -103,14 +97,12 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         this.replyManager = new ReplyManager(this, storageManager);
         this.socialSpyManager = new SocialSpyManager(this, storageManager);
 
-        // 3. Moderation and rules
         this.chatModerator = new ChatModerator(chatConfig);
         this.ruleManager = new RuleManager(this);
         this.ruleManager.load();
 
         this.localAnswerManager = new LocalAnswerManager(this, chatConfig);
 
-        // 4. Storages
         this.chatMessageRegistry = new ChatMessageRegistry(
                 this,
                 chatConfig.delete().cacheSize(),
@@ -139,67 +131,60 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
                 20L * 60, 20L * 60
         );
 
-        // 5. Formatter and display
         this.chatFormatter = new ChatFormatter(this, chatConfig);
         this.headDisplayManager = new HeadDisplayManager(
                 this,
                 chatConfig.display().headDisplayDuration()
         );
 
-        // 6. Channels
         this.channelManager = new ChannelManager(this, storageManager);
         loadChannels();
 
-        // 6.5. Group manager
         this.groupManager = new GroupManager(this, storageManager);
 
-        // 7. Thread manager
         this.threadManager = new ThreadManager(
                 this, chatMessageRegistry, chatFormatter, chatConfig
         );
 
-        // 8. Chat game manager
         this.chatGameManager = new ChatGameManager(this, chatConfig, gamesConfig);
 
-        // 9. External integrations
         this.discordWebhook = new DiscordWebhook(this, chatConfig);
         this.discordWebhook.start();
 
         this.autoBroadcast = new AutoBroadcast(this, chatConfig);
         this.autoBroadcast.start();
 
-        // 10. Logging
         if (chatConfig.logging().enabled()) {
             this.chatLogger = new ChatLogger(this);
             this.chatLogger.open();
         }
         this.chatRedrawManager = new ChatRedrawManager(this, chatFormatter);
 
-        // 11. Listeners
+        // Listeners
         getServer().getPluginManager().registerEvents(new PlayerDataListener(this), this);
         getServer().getPluginManager().registerEvents(new InvListener(this), this);
         getServer().getPluginManager().registerEvents(
                 new ChatListener(this, ignoreManager, headDisplayManager, chatFormatter), this
         );
 
-        // 12. Commands
+        // Commands
         new RpCommand(this).register();
         registerCommands();
 
-        // 13. Scheduled tasks
+        // Scheduled
         this.chatGameManager.start();
 
-        // 14. Update checker
+        // Update checker
         this.updateNotifier = new UpdateNotifier(this);
         this.updateNotifier.checkAsync();
 
-        // 15. PAPI expansion
+        // PAPI
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
-            new ChatPlaceholders(this).register();
+            this.chatPlaceholders = new ChatPlaceholders(this);
+            this.chatPlaceholders.register();
             getLogger().info("PlaceholderAPI expansion: %terracraftchat_...%");
         }
 
-        // 16. Startup summary
         printStartupSummary();
     }
 
@@ -267,9 +252,11 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         getLogger().info("   PlaceholderAPI: " + status(getServer().getPluginManager().getPlugin("PlaceholderAPI")));
         getLogger().info("   SkinsRestorer:  " + status(getServer().getPluginManager().getPlugin("SkinsRestorer")));
         getLogger().info("   LuckPerms:      " + status(getServer().getPluginManager().getPlugin("LuckPerms")));
+        getLogger().info("   MineSQL:        " + status(getServer().getPluginManager().getPlugin("MineSQL")));
         getLogger().info("");
         getLogger().info(" Storage:");
-        getLogger().info("   Type:           " + chatConfig.storage().type());
+        getLogger().info("   Type:           MineSQL");
+        getLogger().info("   Table prefix:   " + chatConfig.storage().tablePrefix());
         getLogger().info("");
         getLogger().info(" Features:");
         getLogger().info("   Channels:       " + channelManager.all().size());
@@ -281,7 +268,9 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         getLogger().info("   PAPI expansion: " + status(getServer().getPluginManager().getPlugin("PlaceholderAPI") != null));
         getLogger().info("   Discord:        " + status(chatConfig.discord().enabled()));
         getLogger().info("   AutoBroadcast:  " + status(autoBroadcast != null));
-        getLogger().info("   Chat Games:     " + status(chatConfig.chatGames().enabled()));
+        getLogger().info("   Chat Games:     " + status(chatConfig.chatGames().enabled())
+                + (chatGameManager != null && chatGameManager.isManuallyDisabled()
+                ? " (manually disabled)" : ""));
         getLogger().info("   Logging:        " + status(chatConfig.logging().enabled()));
         getLogger().info("");
         getLogger().info(" Loaded:");
@@ -342,7 +331,6 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         pm.addPermission(new Permission("terracraftchat.channel.staff",
                 "Allows using the staff channel", PermissionDefault.OP));
 
-        // Новые права (stats + groups)
         pm.addPermission(new Permission("terracraftchat.stats",
                 "Allows /chat stats", PermissionDefault.OP));
         pm.addPermission(new Permission("terracraftchat.group.create",
@@ -399,9 +387,8 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
             if (ruleManager != null) ruleManager.reload();
 
             this.gamesConfig.load();
-            this.chatGameManager.stop();
-            this.chatGameManager = new ChatGameManager(this, chatConfig, gamesConfig);
-            this.chatGameManager.start();
+            // chatGameManager.reload сохраняет manuallyDisabled
+            this.chatGameManager.reload(chatConfig);
 
             this.emojiManager.load();
 
@@ -426,6 +413,11 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
 
             this.translationManager.reload();
             loadChannels();
+
+            // Сброс кэша PAPI-статистики
+            if (chatPlaceholders != null) {
+                chatPlaceholders.invalidateAll();
+            }
         } catch (Exception ex) {
             getLogger().severe("Ошибка применения конфига: " + ex.getMessage());
             ex.printStackTrace();
@@ -433,11 +425,8 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
             return false;
         }
 
-        if (!oldConfig.storage().type().equalsIgnoreCase(chatConfig.storage().type())
-                || !oldConfig.storage().tablePrefix().equals(chatConfig.storage().tablePrefix())) {
-            getLogger().warning("Изменения в storage.type/tablePrefix не применились. "
-                    + "Нужен перезапуск сервера.");
-        }
+        getLogger().warning("MineSQL настройки (host/db/user) НЕ перезагружены. "
+                + "Используйте /minesql reload или рестарт сервера.");
 
         getLogger().info("Configuration reloaded.");
         return true;
@@ -502,6 +491,7 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         new ChatStatsCommand(this).register();
         new ChatPurgeCommand(this).register();
         new ChatGroupCommand(this).register();
+        new ChatGamesCommand(this).register();   // ← добавили
     }
 
     // ============================================================
@@ -535,5 +525,6 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     public GroupManager getGroupManager() { return groupManager; }
     public InvTokenManager getInvTokenManager() { return invTokenManager; }
     public ChatRedrawManager getChatRedrawManager() { return chatRedrawManager; }
+    public ChatPlaceholders getChatPlaceholders() { return chatPlaceholders; }
     public StorageManager getStorageManager() { return storageManager; }
 }

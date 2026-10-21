@@ -7,21 +7,16 @@ public class UpdateNotifier {
 
     private final JavaPlugin plugin;
 
-    private static final String GITHUB_OWNER = "luci4ka";           // твой ник на GitHub
-    private static final String GITHUB_REPO = "TerraCraftChat";     // название репо
+    private static final String GITHUB_OWNER = "luci4ka";
+    private static final String GITHUB_REPO = "TerraCraftChat";
 
     public UpdateNotifier(JavaPlugin plugin) {
         this.plugin = plugin;
     }
 
-    /**
-     * Асинхронная проверка обновлений.
-     * Не блокирует главный поток.
-     */
     public void checkAsync() {
         String currentVersion = plugin.getPluginMeta().getVersion();
 
-        // owner, repo, currentVersion — ИМЕННО В ТАКОМ ПОРЯДКЕ
         UpdateChecker checker = UpdateChecker.builder(
                         GITHUB_OWNER,
                         GITHUB_REPO,
@@ -31,8 +26,10 @@ public class UpdateNotifier {
 
         checker.checkNowAsync().thenAccept(result -> {
             if (result.hasError()) {
-                plugin.getLogger().warning("Не удалось проверить обновления: "
-                        + result.getError().orElseThrow().getMessage());
+                String err = result.getError()
+                        .map(Throwable::getMessage)
+                        .orElse("unknown");
+                plugin.getLogger().warning("Не удалось проверить обновления: " + err);
                 return;
             }
 

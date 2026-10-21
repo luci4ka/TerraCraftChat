@@ -46,6 +46,7 @@ public class ChatGroupCommand {
                             }
 
                             plugin.getStorageManager().addGroupMember(groupId, sender.getUniqueId());
+                            plugin.getGroupManager().invalidateCache(groupId);
                             plugin.getGroupManager().setActive(sender, groupId);
 
                             MessageUtil.sendPrefixed(sender, "chat.group-created",
@@ -74,6 +75,8 @@ public class ChatGroupCommand {
                             var targetId = profiles.get(0).getUniqueId();
 
                             plugin.getStorageManager().addGroupMember(group.id(), targetId);
+                            plugin.getGroupManager().invalidateCache(group.id());
+
                             MessageUtil.sendPrefixed(sender, "chat.group-member-added",
                                     Argument.string("group", groupName));
                         })
@@ -90,6 +93,8 @@ public class ChatGroupCommand {
                             }
                             plugin.getStorageManager().removeGroupMember(
                                     group.id(), sender.getUniqueId());
+                            plugin.getGroupManager().invalidateCache(group.id());
+
                             MessageUtil.sendPrefixed(sender, "chat.group-left",
                                     Argument.string("group", groupName));
                         })
@@ -110,6 +115,8 @@ public class ChatGroupCommand {
                                 return;
                             }
                             plugin.getStorageManager().deleteGroup(group.id());
+                            plugin.getGroupManager().invalidateCache(group.id());
+
                             MessageUtil.sendPrefixed(sender, "chat.group-deleted",
                                     Argument.string("group", groupName));
                         })

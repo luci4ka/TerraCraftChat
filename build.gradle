@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'net.ru.terracraft'
-version = '1.1.0'
+version = '1.1.1'
 
 repositories {
     mavenCentral()
@@ -13,6 +13,8 @@ repositories {
     maven { url 'https://repo.papermc.io/repository/maven-public/' }
     maven { url 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
     maven { url 'https://repo.codemc.io/repository/maven-releases/' }
+    maven { url 'https://raw.githubusercontent.com/CarmJos/MineSQL/repo/' }
+    maven { url 'https://repo.carm.cc/repository/maven-public/' }
     maven {
         name = "jitpack"
         url = "https://jitpack.io/"
@@ -22,18 +24,15 @@ repositories {
 dependencies {
     paperweight.paperDevBundle("1.21.11-R0.1-SNAPSHOT")
 
-    implementation("org.bstats:bstats-bukkit:3.2.1")
-    implementation("de.exlll:configlib-yaml:4.8.1")
-
     compileOnly 'net.skinsrestorer:skinsrestorer-api:15.12.6'
     compileOnly("dev.jorel:commandapi-paper-core:12.1.0")
-    // H2 — файловая БД
-    implementation 'com.h2database:h2:2.3.232'
-    // MySQL JDBC
-    implementation 'com.mysql:mysql-connector-j:9.1.0'
-    // HikariCP — пул соединений
-    implementation 'com.zaxxer:HikariCP:6.2.1'
+    compileOnly "cc.carm.plugin:minesql-api:1.4.2"
+    compileOnly 'cc.carm.lib:easysql-api:0.4.7'
     compileOnly 'me.clip:placeholderapi:2.12.3'
+
+
+    implementation("org.bstats:bstats-bukkit:3.2.1")
+    implementation("de.exlll:configlib-yaml:4.8.1")
     implementation('com.github.ez-plugins:mc-plugin-update-notifier:1.0.0')
 }
 
@@ -74,9 +73,6 @@ shadowJar {
     relocate 'org.bstats', 'ru.net.terracraft.chat.libs.bstats'
     relocate 'de.exlll.configlib', 'ru.net.terracraft.chat.libs.configlib'
     relocate 'com.github.ezplugins', 'ru.net.terracraft.chat.libs.updater'
-    relocate 'org.h2', 'ru.net.terracraft.chat.libs.h2'
-    relocate 'com.mysql', 'ru.net.terracraft.chat.libs.mysql'
-    relocate 'com.zaxxer.hikari', 'ru.net.terracraft.chat.libs.hikari'
 
     exclude 'META-INF/maven/**'
     exclude 'META-INF/LICENSE*'

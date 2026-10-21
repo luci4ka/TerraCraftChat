@@ -9,10 +9,6 @@ import java.util.Map;
 @Configuration
 public final class ChatConfig {
 
-    // ============================================================
-    //  ОСНОВНЫЕ МОДУЛИ
-    // ============================================================
-
     @Comment("Форматы сообщений")
     private FormatsSection formats = new FormatsSection();
 
@@ -58,7 +54,7 @@ public final class ChatConfig {
     @Comment("Chat Games (мини-игры)")
     private ChatGamesSection chatGames = new ChatGamesSection();
 
-    @Comment("Хранилище данных (H2 / MySQL)")
+    @Comment("Хранилище данных (MineSQL)")
     private StorageSection storage = new StorageSection();
 
     // ============================================================
@@ -96,27 +92,27 @@ public final class ChatConfig {
                 "<world>          — мир отправителя",
                 "<message>        — текст сообщения",
                 "{msg_command}    — /msg <ник> (для клика)",
-                "<lp_prefix> / <lp_suffix> — префикс/суффикс LuckPerms",
+                "%luckperms_prefix% / %luckperms_suffix% — префикс/суффикс LuckPerms",
                 "Любые PAPI-плейсхолдеры (%player_name%, ...)",
                 "",
                 "Формат локального сообщения"
         })
         private String local = "<gray>[<green>L<gray>] <click:suggest_command:'{msg_command}'>"
                 + "<hover:show_text:'<gray>Нажми, чтобы написать'>"
-                + "<sender_head> <lp_prefix><display_name><lp_suffix>"
+                + "<sender_head> %luckperms_prefix%<display_name>%luckperms_suffix%"
                 + "</hover></click><gray>: <reset><message>";
 
         @Comment("Формат глобального сообщения")
-        private String global = "<gray>[<gold>G<gray>] <sender_head> <lp_prefix><display_name><lp_suffix><gray>: <reset><message>";
+        private String global = "<gray>[<gold>G<gray>] <sender_head> %luckperms_prefix%<display_name>%luckperms_suffix%<gray>: <reset><message>";
 
-        @Comment("Формат staff-канала. <reset> после [STAFF] — голова и ник обычного цвета")
-        private String staff = "<dark_red>[<red>STAFF<dark_red>] <reset><sender_head> <lp_prefix><display_name><lp_suffix><gray>: <reset><message>";
+        @Comment("Формат staff-канала")
+        private String staff = "<dark_red>[<red>STAFF<dark_red>] <reset><sender_head> %luckperms_prefix%<display_name>%luckperms_suffix%<gray>: <reset><message>";
 
         @Comment("Формат /msg")
-        private String privateMsg = "<gray>[<gold>ЛС<gray>] <sender_head> <lp_sender_prefix><sender><lp_sender_suffix> <dark_gray>→ <receiver_head> <lp_receiver_prefix><receiver><lp_receiver_suffix><gray>: <white><message>";
+        private String privateMsg = "<gray>[<gold>ЛС<gray>] <sender_head> %luckperms_prefix%<sender>%luckperms_suffix% <dark_gray>→ <receiver_head> %luckperms_prefix%<receiver>%luckperms_suffix%<gray>: <white><message>";
 
         @Comment("Формат /reply")
-        private String reply = "<gray>[<gold>ЛС<gray>] <sender_head> <lp_sender_prefix><sender><lp_sender_suffix> <dark_gray>→ <receiver_head> <lp_receiver_prefix><receiver><lp_receiver_suffix><gray>: <white><message>";
+        private String reply = "<gray>[<gold>ЛС<gray>] <sender_head> %luckperms_prefix%<sender>%luckperms_suffix% <dark_gray>→ <receiver_head> %luckperms_prefix%<receiver>%luckperms_suffix%<gray>: <white><message>";
 
         @Comment("Формат /broadcast")
         private String broadcast = "<dark_gray>[<red>Объявление<dark_gray>] <white><message>";
@@ -157,12 +153,12 @@ public final class ChatConfig {
 
         @Comment({
                 "Список каналов. Ключ — id канала.",
-                "prefix     — префикс в сообщении ('!' → '!привет'; '' → без префикса)",
+                "prefix     — префикс в сообщении",
                 "range      — радиус в блоках (-1 = вся карта/сеть)",
                 "permission — право для доступа ('' = всем)",
-                "format     — ключ из секции formats (local / global / staff)",
+                "format     — ключ из секции formats",
                 "cooldown   — свой кулдаун в секундах (0 = общий)",
-                "public     — в Discord, бот, упоминания. Канал с permission никогда не публичный."
+                "public     — в Discord, бот, упоминания."
         })
         private Map<String, ChannelEntry> channels = Map.of(
                 "local",  new ChannelEntry("",  100, "",                              "local",  0, true),
@@ -182,8 +178,7 @@ public final class ChatConfig {
             private String format = "local";
             private int cooldown = 0;
 
-            @Comment("Публичный канал (Discord, бот, упоминания). " +
-                    "По умолчанию false — безопасный дефолт для старых конфигов.")
+            @Comment("Публичный канал (Discord, бот, упоминания).")
             private boolean publicChannel = false;
 
             public ChannelEntry() {}
@@ -239,7 +234,7 @@ public final class ChatConfig {
         @Comment("Длительность (сек)")
         private int headDisplayDuration = 3;
 
-        @Comment("Показывать голову игрока в чате (нужен SkinsRestorer)")
+        @Comment("Показывать голову игрока в чате")
         private boolean showPlayerHeads = true;
 
         @Comment("Разрешить [item] в сообщениях")
@@ -377,13 +372,13 @@ public final class ChatConfig {
     @Configuration
     public static final class RpSection {
         @Comment("Формат /me")
-        private String meFormat = "<gray>* <white><lp_prefix><player><lp_suffix> <gray><message>";
+        private String meFormat = "<gray>* <white>%luckperms_prefix%<player>%luckperms_suffix% <gray><message>";
 
         @Comment("Формат /do")
         private String doFormat = "<gray>* <message>";
 
         @Comment("Формат /try")
-        private String tryFormat = "<gray>* <white><lp_prefix><player><lp_suffix> <gray>попытался <message> <result>";
+        private String tryFormat = "<gray>* <white>%luckperms_prefix%<player>%luckperms_suffix% <gray>попытался <message> <result>";
 
         @Comment("Успех /try")
         private String trySuccess = "<green>и у него получилось!";
@@ -392,7 +387,7 @@ public final class ChatConfig {
         private String tryFail = "<red>и у него не вышло...";
 
         @Comment("Формат /roll")
-        private String rollFormat = "<gray>* <white><lp_prefix><player><lp_suffix> <gray>бросил кубик: <yellow><result> <gray>(1-<max>)";
+        private String rollFormat = "<gray>* <white>%luckperms_prefix%<player>%luckperms_suffix% <gray>бросил кубик: <yellow><result> <gray>(1-<max>)";
 
         public String meFormat() { return meFormat; }
         public String doFormat() { return doFormat; }
@@ -412,7 +407,7 @@ public final class ChatConfig {
         private boolean enabled = true;
 
         @Comment("Формат сообщения шпиона")
-        private String format = "<dark_gray>[<red>SPY<dark_gray>] <gray>[<white><type><gray>] <lp_sender_prefix><sender><lp_sender_suffix> <dark_gray>→ <lp_receiver_prefix><receiver><lp_receiver_suffix><gray>: <white><message>";
+        private String format = "<dark_gray>[<red>SPY<dark_gray>] <gray>[<white><type><gray>] %luckperms_prefix%<sender>%luckperms_suffix% <dark_gray>→ %luckperms_prefix%<receiver>%luckperms_suffix%<gray>: <white><message>";
 
         public boolean enabled() { return enabled; }
         public String format() { return format; }
@@ -436,10 +431,14 @@ public final class ChatConfig {
         @Comment("Кнопка удаления")
         private String button = "<dark_red>[✖]</dark_red>";
 
+        @Comment("Сколько строк 'сдвинуть' при redraw после удаления (как Allium)")
+        private int clearLines = 120;
+
         public boolean enabled() { return enabled; }
         public int cacheSize() { return cacheSize; }
         public int ttlSeconds() { return ttlSeconds; }
         public String button() { return button; }
+        public int clearLines() { return clearLines; }
     }
 
     // ============================================================
@@ -590,73 +589,31 @@ public final class ChatConfig {
     }
 
     // ============================================================
-    //  СЕКЦИЯ: STORAGE (H2 / MySQL)
+    //  СЕКЦИЯ: STORAGE (MineSQL)
     // ============================================================
 
     @Configuration
     public static final class StorageSection {
         @Comment({
-                "Тип хранилища:",
-                "  h2    — локальная файловая БД (plugins/Chat/chat.mv.db)",
-                "  mysql — внешняя БД (для сети серверов)",
-                "По умолчанию h2 — работает из коробки, без настройки."
+                "Префикс таблиц в общей БД.",
+                "",
+                "Сама БД настраивается в plugins/MineSQL/config.yml,",
+                "в секции с ID 'terracraft-chat':",
+                "",
+                "  databases:",
+                "    \"terracraft-chat\":",
+                "      driver-type: mariadb",
+                "      host: 127.0.0.1",
+                "      port: 3306",
+                "      database: terra_core",
+                "      username: terra",
+                "      password: ...",
+                "",
+                "Используется общий пул соединений MineSQL.",
+                "Изменения в plugins/MineSQL/config.yml требуют /minesql reload или рестарта."
         })
-        private String type = "h2";
-
-        @Comment("Префикс таблиц (для мультиплагинных БД)")
         private String tablePrefix = "tc_";
 
-        @Comment({
-                "H2 — файловая БД.",
-                "file — имя файла (без .mv.db), в папке плагина."
-        })
-        private H2Entry h2 = new H2Entry();
-
-        @Comment({
-                "MySQL — внешняя БД.",
-                "Создайте пустую БД (например, 'minecraft') и пользователя."
-        })
-        private MySQLEntry mysql = new MySQLEntry();
-
-        public String type() { return type; }
         public String tablePrefix() { return tablePrefix; }
-        public H2Entry h2() { return h2; }
-        public MySQLEntry mysql() { return mysql; }
-
-        @Configuration
-        public static class H2Entry {
-            @Comment("Имя файла БД (без .mv.db)")
-            private String file = "chat";
-
-            public String file() { return file; }
-        }
-
-        @Configuration
-        public static class MySQLEntry {
-            @Comment("Хост")
-            private String host = "localhost";
-
-            @Comment("Порт")
-            private int port = 3306;
-
-            @Comment("Имя базы данных")
-            private String database = "minecraft";
-
-            @Comment("Пользователь")
-            private String username = "root";
-
-            @Comment("Пароль")
-            private String password = "";
-
-            @Comment("Размер пула соединений (HikariCP)")
-            private int poolSize = 10;
-
-            public String host() { return host; }
-            public int port() { return port; }
-            public String database() { return database; }
-            public String username() { return username; }
-            public String password() { return password; }
-            public int poolSize() { return poolSize; }
-        }
     }
 }

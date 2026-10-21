@@ -4,7 +4,8 @@ main: ru.net.terracraft.chat.TerraCraftChatPlugin
 api-version: '1.21'
 authors: [ luci ]
 description: Плагин на чат
-website: terracraft.net.ru
+website: https://github.com/luci4ka/TerraCraftChat
+folia-supported: false
 
 dependencies:
   server:
@@ -12,11 +13,11 @@ dependencies:
       load: BEFORE
       required: true
       join-classpath: true
-    SkinsRestorer:
-      load: BEFORE
-      required: false
-      join-classpath: false
     PlaceholderAPI:
       load: BEFORE
       required: false
+      join-classpath: true
+    MineSQL:
+      load: BEFORE
+      required: true
       join-classpath: true
