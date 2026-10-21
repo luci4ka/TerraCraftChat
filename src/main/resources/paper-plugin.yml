@@ -1,6 +1,6 @@
 name: Chat
 version: '${version}'
-main: ru.net.terracraft.chat.TerraCraftChatPlugin
+main: ru.terracraft.chat.TerraCraftChatPlugin
 api-version: '1.21'
 authors: [ luci ]
 description: Плагин на чат
