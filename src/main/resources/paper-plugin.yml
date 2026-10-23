@@ -1,4 +1,4 @@
-name: Chat
+name: TerraCraftChat
 version: '${version}'
 main: ru.terracraft.chat.TerraCraftChatPlugin
 api-version: '26.1'
