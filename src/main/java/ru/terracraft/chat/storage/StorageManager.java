@@ -25,6 +25,9 @@ public class StorageManager {
 
     public static final String SOURCE_NAME = "terracraft-chat";
 
+    /** Лимит на количество плейсхолдеров в одном IN(...) — защита от гигантских батчей. */
+    private static final int IN_CHUNK_SIZE = 500;
+
     private final JavaPlugin plugin;
     private SQLManager sqlManager;
     private String tablePrefix;
@@ -35,6 +38,10 @@ public class StorageManager {
     public StorageManager(JavaPlugin plugin) {
         this.plugin = plugin;
     }
+
+    // ============================================================
+    //  INIT / MIGRATE
+    // ============================================================
 
     public void init() {
         var storage = ((TerraCraftChatPlugin) plugin).getChatConfig().storage();
@@ -73,90 +80,109 @@ public class StorageManager {
         });
     }
 
+    /**
+     * Миграции для MariaDB (InnoDB, utf8mb4).
+     * Все таблицы создаются с ENGINE=InnoDB и DEFAULT CHARSET=utf8mb4,
+     * чтобы корректно хранить эмодзи и любые Unicode-ники.
+     */
     private void migrate() {
         String p = tablePrefix;
+        String suffix = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "ignores (" +
                 "viewer VARCHAR(36) NOT NULL, " +
                 "target VARCHAR(36) NOT NULL, " +
                 "expires_at BIGINT NOT NULL DEFAULT 0, " +
-                "PRIMARY KEY (viewer, target))", "ignores");
+                "PRIMARY KEY (viewer, target))" + suffix, "ignores");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "message_history (" +
-                "id VARCHAR(36) PRIMARY KEY, " +
+                "id VARCHAR(36) NOT NULL, " +
                 "sender_uuid VARCHAR(36) NOT NULL, " +
-                "sender_name VARCHAR(32) NOT NULL, " +
-                "channel_id VARCHAR(32) NOT NULL, " +
-                "raw_message TEXT NOT NULL, " +
-                "timestamp BIGINT NOT NULL)", "message_history");
+                "sender_name VARCHAR(64) NOT NULL, " +
+                "channel_id VARCHAR(64) NOT NULL, " +
+                "raw_message MEDIUMTEXT NOT NULL, " +
+                "timestamp BIGINT NOT NULL, " +
+                "PRIMARY KEY (id))" + suffix, "message_history");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "nicks (" +
-                "uuid VARCHAR(36) PRIMARY KEY, " +
-                "nick TEXT NOT NULL)", "nicks");
+                "uuid VARCHAR(36) NOT NULL, " +
+                "nick VARCHAR(64) NOT NULL, " +
+                "PRIMARY KEY (uuid))" + suffix, "nicks");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "socialspy (" +
-                "uuid VARCHAR(36) PRIMARY KEY, " +
-                "enabled BOOLEAN NOT NULL)", "socialspy");
+                "uuid VARCHAR(36) NOT NULL, " +
+                "enabled TINYINT(1) NOT NULL DEFAULT 0, " +
+                "PRIMARY KEY (uuid))" + suffix, "socialspy");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "replies (" +
-                "viewer VARCHAR(36) PRIMARY KEY, " +
-                "target VARCHAR(36) NOT NULL)", "replies");
+                "viewer VARCHAR(36) NOT NULL, " +
+                "target VARCHAR(36) NOT NULL, " +
+                "PRIMARY KEY (viewer))" + suffix, "replies");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "channels (" +
-                "uuid VARCHAR(36) PRIMARY KEY, " +
-                "channel_id VARCHAR(32) NOT NULL)", "channels");
+                "uuid VARCHAR(36) NOT NULL, " +
+                "channel_id VARCHAR(64) NOT NULL, " +
+                "PRIMARY KEY (uuid))" + suffix, "channels");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "rules_log (" +
-                "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                "id BIGINT NOT NULL AUTO_INCREMENT, " +
                 "rule_id VARCHAR(64) NOT NULL, " +
                 "player_uuid VARCHAR(36) NOT NULL, " +
-                "player_name VARCHAR(32) NOT NULL, " +
-                "message TEXT, " +
-                "timestamp BIGINT NOT NULL)", "rules_log");
+                "player_name VARCHAR(64) NOT NULL, " +
+                "message MEDIUMTEXT NULL, " +
+                "timestamp BIGINT NOT NULL, " +
+                "PRIMARY KEY (id))" + suffix, "rules_log");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "player_stats (" +
-                "uuid VARCHAR(36) PRIMARY KEY, " +
+                "uuid VARCHAR(36) NOT NULL, " +
                 "messages_sent BIGINT NOT NULL DEFAULT 0, " +
                 "messages_blocked BIGINT NOT NULL DEFAULT 0, " +
                 "swear_caught BIGINT NOT NULL DEFAULT 0, " +
-                "ads_caught BIGINT NOT NULL DEFAULT 0)", "player_stats");
+                "ads_caught BIGINT NOT NULL DEFAULT 0, " +
+                "PRIMARY KEY (uuid))" + suffix, "player_stats");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "thread_replies (" +
-                "id VARCHAR(36) PRIMARY KEY, " +
+                "id VARCHAR(36) NOT NULL, " +
                 "parent_id VARCHAR(36) NOT NULL, " +
                 "author_uuid VARCHAR(36) NOT NULL, " +
-                "author_name VARCHAR(32) NOT NULL, " +
-                "text TEXT NOT NULL, " +
-                "timestamp BIGINT NOT NULL)", "thread_replies");
+                "author_name VARCHAR(64) NOT NULL, " +
+                "text MEDIUMTEXT NOT NULL, " +
+                "timestamp BIGINT NOT NULL, " +
+                "PRIMARY KEY (id))" + suffix, "thread_replies");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "message_viewers (" +
                 "message_id VARCHAR(36) NOT NULL, " +
                 "viewer_uuid VARCHAR(36) NOT NULL, " +
-                "PRIMARY KEY (message_id, viewer_uuid))", "message_viewers");
+                "PRIMARY KEY (message_id, viewer_uuid))" + suffix, "message_viewers");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "chat_groups (" +
-                "id VARCHAR(36) PRIMARY KEY, " +
-                "name VARCHAR(32) NOT NULL UNIQUE, " +
+                "id VARCHAR(36) NOT NULL, " +
+                "name VARCHAR(64) NOT NULL, " +
                 "owner_uuid VARCHAR(36) NOT NULL, " +
-                "created_at BIGINT NOT NULL)", "chat_groups");
+                "created_at BIGINT NOT NULL, " +
+                "PRIMARY KEY (id), " +
+                "UNIQUE KEY uk_" + p + "group_name (name))" + suffix, "chat_groups");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "chat_group_members (" +
                 "group_id VARCHAR(36) NOT NULL, " +
                 "member_uuid VARCHAR(36) NOT NULL, " +
-                "PRIMARY KEY (group_id, member_uuid))", "chat_group_members");
+                "PRIMARY KEY (group_id, member_uuid))" + suffix, "chat_group_members");
 
         executeRaw("CREATE TABLE IF NOT EXISTS " + p + "chat_group_history (" +
-                "id VARCHAR(36) PRIMARY KEY, " +
+                "id VARCHAR(36) NOT NULL, " +
                 "group_id VARCHAR(36) NOT NULL, " +
                 "sender_uuid VARCHAR(36) NOT NULL, " +
-                "sender_name VARCHAR(32) NOT NULL, " +
-                "message TEXT NOT NULL, " +
-                "timestamp BIGINT NOT NULL)", "chat_group_history");
+                "sender_name VARCHAR(64) NOT NULL, " +
+                "message MEDIUMTEXT NOT NULL, " +
+                "timestamp BIGINT NOT NULL, " +
+                "PRIMARY KEY (id))" + suffix, "chat_group_history");
 
         // === Индексы (отдельно, безопасно) ===
         createIndex("idx_" + p + "history_ts", p + "message_history", "timestamp");
+        createIndex("idx_" + p + "history_channel", p + "message_history", "channel_id, timestamp");
         createIndex("idx_" + p + "rules_ts", p + "rules_log", "timestamp");
-        createIndex("idx_" + p + "thread_parent", p + "thread_replies", "parent_id");
+        createIndex("idx_" + p + "rules_player", p + "rules_log", "player_uuid");
+        createIndex("idx_" + p + "thread_parent", p + "thread_replies", "parent_id, timestamp");
         createIndex("idx_" + p + "viewers_msg", p + "message_viewers", "message_id");
         createIndex("idx_" + p + "group_members", p + "chat_group_members", "group_id");
         createIndex("idx_" + p + "group_history", p + "chat_group_history", "group_id, timestamp");
@@ -171,10 +197,19 @@ public class StorageManager {
         }
     }
 
+    /**
+     * CREATE INDEX в MariaDB не поддерживает IF NOT EXISTS до 10.5+.
+     * Поэтому глушим только «Duplicate key name» (1061), остальное логируем.
+     */
     private void createIndex(String indexName, String table, String columns) {
         try {
             sql().executeSQL("CREATE INDEX " + indexName + " ON " + table + "(" + columns + ")");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
+            if (!msg.contains("duplicate") && !msg.contains("1061")) {
+                plugin.getLogger().warning("Index " + indexName + " not created: " + e.getMessage());
+            }
+        }
     }
 
     private SQLManager sql() {
@@ -308,21 +343,35 @@ public class StorageManager {
         });
     }
 
+    /**
+     * Удаляет старые сообщения и связанные с ними просмотры/ответы.
+     *
+     * ИСПРАВЛЕНИЕ: addCondition(column, "IN", "(subquery)") в EasySQL оборачивает
+     * значение в кавычки → MariaDB получает `IN '(SELECT ...)'` и падает с 1064.
+     * Поэтому подзапрос встраивается в текст SQL, а граница — через prepared-параметр.
+     */
     public void cleanupHistory(long olderThanMs) {
         async(() -> {
             try {
-                sql().createDelete(tablePrefix + "message_viewers")
-                        .addCondition("message_id", "IN",
-                                "(SELECT id FROM " + tablePrefix + "message_history WHERE timestamp < " + olderThanMs + ")")
-                        .build().execute();
-                sql().createDelete(tablePrefix + "thread_replies")
-                        .addCondition("parent_id", "IN",
-                                "(SELECT id FROM " + tablePrefix + "message_history WHERE timestamp < " + olderThanMs + ")")
-                        .build().execute();
+                String selectOldIds = "SELECT id FROM " + tablePrefix
+                        + "message_history WHERE timestamp < ?";
+
+                sql().executeSQL(
+                        "DELETE FROM " + tablePrefix + "message_viewers WHERE message_id IN ("
+                                + selectOldIds + ")",
+                        new Object[]{ olderThanMs }
+                );
+
+                sql().executeSQL(
+                        "DELETE FROM " + tablePrefix + "thread_replies WHERE parent_id IN ("
+                                + selectOldIds + ")",
+                        new Object[]{ olderThanMs }
+                );
+
                 sql().createDelete(tablePrefix + "message_history")
                         .addCondition("timestamp", "<", olderThanMs)
                         .build().execute();
-            } catch (SQLException e) {
+            } catch (Exception e) {
                 plugin.getLogger().warning("DB cleanupHistory: " + e.getMessage());
             }
         });
@@ -336,6 +385,10 @@ public class StorageManager {
     //  Message viewers — BATCH
     // ============================================================
 
+    /**
+     * ИСПРАВЛЕНИЕ: INSERT IGNORE, чтобы повторная запись той же пары
+     * (message_id, viewer_uuid) не роняла весь батч.
+     */
     public void saveMessageViewers(UUID messageId, Set<UUID> viewers) {
         if (viewers.isEmpty()) return;
 
@@ -344,7 +397,7 @@ public class StorageManager {
         async(() -> {
             try {
                 StringBuilder sql = new StringBuilder(
-                        "INSERT INTO " + tablePrefix + "message_viewers (message_id, viewer_uuid) VALUES ");
+                        "INSERT IGNORE INTO " + tablePrefix + "message_viewers (message_id, viewer_uuid) VALUES ");
                 Object[] params = new Object[snapshot.size() * 2];
                 int i = 0;
                 boolean first = true;
@@ -384,25 +437,28 @@ public class StorageManager {
         Map<UUID, List<UUID>> result = new HashMap<>();
         if (messageIds.isEmpty()) return result;
 
-        String placeholders = String.join(",", java.util.Collections.nCopies(messageIds.size(), "?"));
-        String rawSql = "SELECT message_id, viewer_uuid FROM " + tablePrefix
-                + "message_viewers WHERE message_id IN (" + placeholders + ")";
-        Object[] params = messageIds.stream().map(UUID::toString).toArray();
+        for (int offset = 0; offset < messageIds.size(); offset += IN_CHUNK_SIZE) {
+            List<UUID> chunk = messageIds.subList(offset, Math.min(offset + IN_CHUNK_SIZE, messageIds.size()));
+            String placeholders = String.join(",", java.util.Collections.nCopies(chunk.size(), "?"));
+            String rawSql = "SELECT message_id, viewer_uuid FROM " + tablePrefix
+                    + "message_viewers WHERE message_id IN (" + placeholders + ")";
+            Object[] params = chunk.stream().map(UUID::toString).toArray();
 
-        try (SQLQuery query = sql().createQuery()
-                .withPreparedSQL(rawSql)
-                .setParams(params)
-                .execute()) {
-            ResultSet rs = query.getResultSet();
-            while (rs.next()) {
-                try {
-                    UUID msgId = UUID.fromString(rs.getString("message_id"));
-                    UUID viewerId = UUID.fromString(rs.getString("viewer_uuid"));
-                    result.computeIfAbsent(msgId, k -> new ArrayList<>()).add(viewerId);
-                } catch (IllegalArgumentException ignored) {}
+            try (SQLQuery query = sql().createQuery()
+                    .withPreparedSQL(rawSql)
+                    .setParams(params)
+                    .execute()) {
+                ResultSet rs = query.getResultSet();
+                while (rs.next()) {
+                    try {
+                        UUID msgId = UUID.fromString(rs.getString("message_id"));
+                        UUID viewerId = UUID.fromString(rs.getString("viewer_uuid"));
+                        result.computeIfAbsent(msgId, k -> new ArrayList<>()).add(viewerId);
+                    } catch (IllegalArgumentException ignored) {}
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().warning("DB loadViewersBatch: " + e.getMessage());
             }
-        } catch (SQLException e) {
-            plugin.getLogger().warning("DB loadViewersBatch: " + e.getMessage());
         }
         return result;
     }
@@ -664,18 +720,16 @@ public class StorageManager {
     }
 
     // ============================================================
-    //  Статистика (incrementStat / incrementStats)
+    //  Статистика (атомарный upsert MariaDB)
     // ============================================================
 
-    /**
-     * Инкремент одной колонки (для совместимости).
-     */
     public void incrementStat(UUID uuid, String column) {
         incrementStats(uuid, column);
     }
 
     /**
-     * Инкремент нескольких колонок в одном запросе (оптимизация).
+     * ИСПРАВЛЕНИЕ: вместо UPDATE-then-INSERT (гонка, потеря инкремента)
+     * используем атомарный INSERT ... ON DUPLICATE KEY UPDATE — родной для MariaDB.
      */
     public void incrementStats(UUID uuid, String... columns) {
         if (columns.length == 0) return;
@@ -689,31 +743,20 @@ public class StorageManager {
 
         async(() -> {
             try {
-                // 1. UPDATE
-                StringBuilder setClause = new StringBuilder();
-                for (int i = 0; i < columns.length; i++) {
-                    if (i > 0) setClause.append(", ");
-                    setClause.append(columns[i]).append(" = ").append(columns[i]).append(" + 1");
-                }
-
-                Integer updated = sql().executeSQL(
-                        "UPDATE " + tablePrefix + "player_stats SET " + setClause + " WHERE uuid = ?",
-                        new Object[]{ uuid.toString() }
-                );
-
-                if (updated != null && updated > 0) return;
-
-                // 2. INSERT
                 StringBuilder cols = new StringBuilder("uuid");
                 StringBuilder vals = new StringBuilder("?");
-                for (String c : columns) {
-                    cols.append(", ").append(c);
+                StringBuilder upd = new StringBuilder();
+                for (int i = 0; i < columns.length; i++) {
+                    cols.append(", ").append(columns[i]);
                     vals.append(", 1");
+                    if (i > 0) upd.append(", ");
+                    upd.append(columns[i]).append(" = ").append(columns[i]).append(" + 1");
                 }
-                Object[] params = new Object[]{ uuid.toString() };
+
                 sql().executeSQL(
-                        "INSERT INTO " + tablePrefix + "player_stats (" + cols + ") VALUES (" + vals + ")",
-                        params
+                        "INSERT INTO " + tablePrefix + "player_stats (" + cols + ") VALUES (" + vals + ") " +
+                                "ON DUPLICATE KEY UPDATE " + upd,
+                        new Object[]{ uuid.toString() }
                 );
             } catch (Exception e) {
                 plugin.getLogger().warning("DB incrementStats: " + e.getMessage());
@@ -790,32 +833,35 @@ public class StorageManager {
         Map<UUID, List<ThreadReplyRow>> result = new HashMap<>();
         if (parentIds.isEmpty()) return result;
 
-        String placeholders = String.join(",", java.util.Collections.nCopies(parentIds.size(), "?"));
-        String rawSql = "SELECT parent_id, id, author_uuid, author_name, text, timestamp FROM "
-                + tablePrefix + "thread_replies WHERE parent_id IN (" + placeholders + ") ORDER BY timestamp ASC";
-        Object[] params = parentIds.stream().map(UUID::toString).toArray();
+        for (int offset = 0; offset < parentIds.size(); offset += IN_CHUNK_SIZE) {
+            List<UUID> chunk = parentIds.subList(offset, Math.min(offset + IN_CHUNK_SIZE, parentIds.size()));
+            String placeholders = String.join(",", java.util.Collections.nCopies(chunk.size(), "?"));
+            String rawSql = "SELECT parent_id, id, author_uuid, author_name, text, timestamp FROM "
+                    + tablePrefix + "thread_replies WHERE parent_id IN (" + placeholders + ") ORDER BY timestamp ASC";
+            Object[] params = chunk.stream().map(UUID::toString).toArray();
 
-        try (SQLQuery query = sql().createQuery()
-                .withPreparedSQL(rawSql)
-                .setParams(params)
-                .execute()) {
-            ResultSet rs = query.getResultSet();
-            while (rs.next()) {
-                try {
-                    UUID parentId = UUID.fromString(rs.getString("parent_id"));
-                    result.computeIfAbsent(parentId, k -> new ArrayList<>()).add(
-                            new ThreadReplyRow(
-                                    UUID.fromString(rs.getString("id")),
-                                    UUID.fromString(rs.getString("author_uuid")),
-                                    rs.getString("author_name"),
-                                    rs.getString("text"),
-                                    rs.getLong("timestamp")
-                            )
-                    );
-                } catch (IllegalArgumentException ignored) {}
+            try (SQLQuery query = sql().createQuery()
+                    .withPreparedSQL(rawSql)
+                    .setParams(params)
+                    .execute()) {
+                ResultSet rs = query.getResultSet();
+                while (rs.next()) {
+                    try {
+                        UUID parentId = UUID.fromString(rs.getString("parent_id"));
+                        result.computeIfAbsent(parentId, k -> new ArrayList<>()).add(
+                                new ThreadReplyRow(
+                                        UUID.fromString(rs.getString("id")),
+                                        UUID.fromString(rs.getString("author_uuid")),
+                                        rs.getString("author_name"),
+                                        rs.getString("text"),
+                                        rs.getLong("timestamp")
+                                )
+                        );
+                    } catch (IllegalArgumentException ignored) {}
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().warning("DB getThreadRepliesBatch: " + e.getMessage());
             }
-        } catch (SQLException e) {
-            plugin.getLogger().warning("DB getThreadRepliesBatch: " + e.getMessage());
         }
         return result;
     }
@@ -859,6 +905,11 @@ public class StorageManager {
                     .execute();
             return true;
         } catch (SQLException e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
+            // 1062 = Duplicate entry (участник уже в группе) — не ошибка, просто игнорируем
+            if (msg.contains("duplicate") || msg.contains("1062")) {
+                return true;
+            }
             plugin.getLogger().warning("DB addGroupMember: " + e.getMessage());
             return false;
         }

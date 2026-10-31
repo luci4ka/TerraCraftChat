@@ -1,7 +1,7 @@
 name: TerraCraftChat
 version: '${version}'
 main: ru.terracraft.chat.TerraCraftChatPlugin
-api-version: '26.1'
+api-version: '26.2'
 authors: [ luci ]
 description: Плагин на чат
 website: https://github.com/luci4ka/TerraCraftChat
