@@ -77,62 +77,70 @@ public class ChatFormatter {
             "(https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+)"
     );
 
+    /** Звук упоминания, разобранный один раз (а не на каждое сообщение). */
+    private volatile Sound mentionSound;
+    private volatile boolean mentionSoundResolved;
+
     public ChatFormatter(TerraCraftChatPlugin plugin, ChatConfig config) {
         this.plugin = plugin;
         this.config = config;
+        resolveMentionSound();
     }
 
     public void reload(ChatConfig newConfig) {
         this.config = newConfig;
+        resolveMentionSound();
+    }
+
+    // ============================================================
+    //  КОНВЕРТ СООБЩЕНИЯ
+    // ============================================================
+
+    /**
+     * Всё, что не зависит от зрителя и считается <b>один раз на сообщение</b>:
+     * PAPI-плейсхолдеры, &-коды, кликабельная команда ответа и голова отправителя.
+     *
+     * <p>Раньше PAPI вызывался для каждого зрителя — на сервере с сотней
+     * онлайна это сотня разборов одного и того же формата на каждое сообщение.
+     */
+    public record Envelope(String format, Component head, String msgCommand) {}
+
+    public Envelope envelope(Player sender, String formatKey) {
+        String format = config.formats().byKey(formatKey);
+        format = convertAmpToMiniMessage(applyPapi(sender, format));
+
+        String msgCommand = "/msg " + sender.getName() + " ";
+        format = format.replace("{msg_command}", msgCommand);
+
+        return new Envelope(format, plugin.getSkinHeadCache().head(sender), msgCommand);
     }
 
     // ============================================================
     //  ПУБЛИЧНЫЙ ЧАТ
     // ============================================================
 
-    public Component formatLocal(Player sender, String plainMessage, Player viewer, UUID messageId) {
-        return formatChannel(sender, plainMessage, viewer, config.formats().local(), messageId);
-    }
-
-    public Component formatGlobal(Player sender, String plainMessage, Player viewer, UUID messageId) {
-        return formatChannel(sender, plainMessage, viewer, config.formats().global(), messageId);
-    }
-
     public Component formatChannel(Player sender, String plainMessage, Player viewer,
-                                   String formatString, UUID messageId) {
-        // 1. PAPI + конвертация &-кодов
-        formatString = applyPapi(sender, viewer, formatString);
-        formatString = convertAmpToMiniMessage(formatString);
-
-        // 2. Подстановка команды для кликабельного ника
-        formatString = formatString.replace("{msg_command}", "/msg " + sender.getName() + " ");
-
-        // 3. Резолверы
+                                   Envelope envelope, UUID messageId) {
+        // 1. Резолверы
         TagResolver.Builder resolver = TagResolver.builder();
         resolver.resolver(Placeholder.component("display_name", sender.displayName()));
         resolver.resolver(Placeholder.unparsed("sender_name", sender.getName()));
         resolver.resolver(Placeholder.unparsed("world", sender.getWorld().getName()));
+        resolver.resolver(Placeholder.component("sender_head", envelope.head()));
 
-        // 4. Голова
-        String senderHead = config.display().showPlayerHeads()
-                ? plugin.getSkinHeadCache().getHeadTag(sender)
-                : "";
-        resolver.resolver(Placeholder.parsed("sender_head", senderHead));
+        // 2. Сообщение (единственная по-настоящему «персональная» часть)
+        resolver.resolver(Placeholder.component("message", parseMessage(sender, plainMessage, viewer)));
 
-        // 5. Сообщение
-        Component messageComponent = parseMessage(sender, plainMessage, viewer);
-        resolver.resolver(Placeholder.component("message", messageComponent));
+        Component result = miniMessage.deserialize(envelope.format(), resolver.build());
 
-        Component result = miniMessage.deserialize(formatString, resolver.build());
-
-        // 6. Кнопка удаления
+        // 3. Кнопка удаления
         if (config.delete().enabled()
                 && messageId != null
                 && viewer.hasPermission("terracraftchat.moderator")) {
             result = result.append(Component.space()).append(buildDeleteButton(messageId));
         }
 
-        // 7. Панель треда
+        // 4. Панель треда
         if (config.threads().enabled() && messageId != null) {
             Optional<ChatMessage> msgOpt = plugin.getChatMessageRegistry().get(messageId);
             if (msgOpt.isPresent()) {
@@ -141,6 +149,20 @@ public class ChatFormatter {
         }
 
         return result;
+    }
+
+    /** Удобный шорткат для случаев, когда зритель один (голова над головой, тесты). */
+    public Component formatChannel(Player sender, String plainMessage, Player viewer,
+                                   String formatKey, UUID messageId) {
+        return formatChannel(sender, plainMessage, viewer, envelope(sender, formatKey), messageId);
+    }
+
+    public Component formatLocal(Player sender, String plainMessage, Player viewer, UUID messageId) {
+        return formatChannel(sender, plainMessage, viewer, envelope(sender, "local"), messageId);
+    }
+
+    public Component formatGlobal(Player sender, String plainMessage, Player viewer, UUID messageId) {
+        return formatChannel(sender, plainMessage, viewer, envelope(sender, "global"), messageId);
     }
 
     // ============================================================
@@ -162,9 +184,9 @@ public class ChatFormatter {
 
             for (ChatMessage.ThreadReply reply : recent) {
                 Component line = Component.text("\n  ↳ ", NamedTextColor.DARK_GRAY)
-                        .append(Component.text(reply.getAuthorName(), NamedTextColor.GRAY))
+                        .append(Component.text(reply.authorName(), NamedTextColor.GRAY))
                         .append(Component.text(": ", NamedTextColor.DARK_GRAY))
-                        .append(Component.text(reply.getText(), NamedTextColor.WHITE));
+                        .append(Component.text(reply.text(), NamedTextColor.WHITE));
                 panel = panel.append(line);
             }
 
@@ -182,14 +204,14 @@ public class ChatFormatter {
     public Component formatThreadReply(ChatMessage parent, ChatMessage.ThreadReply reply) {
         return Component.text()
                 .append(Component.text("  ↳ ", NamedTextColor.DARK_GRAY))
-                .append(Component.text(reply.getAuthorName(), NamedTextColor.GRAY))
+                .append(Component.text(reply.authorName(), NamedTextColor.GRAY))
                 .append(Component.text(" ", NamedTextColor.DARK_GRAY))
                 .append(Component.translatable(
                         "chat.thread-replied",
                         Argument.string("target", parent.getSenderName())
                 ))
                 .append(Component.text(": ", NamedTextColor.DARK_GRAY))
-                .append(Component.text(reply.getText(), NamedTextColor.WHITE))
+                .append(Component.text(reply.text(), NamedTextColor.WHITE))
                 .build();
     }
 
@@ -220,26 +242,18 @@ public class ChatFormatter {
     private Component formatPrivateWith(Player sender, Player receiver,
                                         Component originalMessage, String formatString,
                                         boolean isSenderCopy) {
-        formatString = applyPapi(sender, receiver, formatString);
-        formatString = convertAmpToMiniMessage(formatString);
+        formatString = convertAmpToMiniMessage(applyPapi(sender, formatString));
 
         String plain = PlainTextComponentSerializer.plainText().serialize(originalMessage);
 
         Player viewerForParse = isSenderCopy ? sender : receiver;
         Component messageComponent = parseMessage(sender, plain, viewerForParse);
 
-        String senderHead = config.display().showPlayerHeads()
-                ? plugin.getSkinHeadCache().getHeadTag(sender)
-                : "";
-        String receiverHead = config.display().showPlayerHeads()
-                ? plugin.getSkinHeadCache().getHeadTag(receiver)
-                : "";
-
         TagResolver resolver = TagResolver.builder()
                 .resolver(Placeholder.component("sender", sender.displayName()))
                 .resolver(Placeholder.component("receiver", receiver.displayName()))
-                .resolver(Placeholder.parsed("sender_head", senderHead))
-                .resolver(Placeholder.parsed("receiver_head", receiverHead))
+                .resolver(Placeholder.component("sender_head", plugin.getSkinHeadCache().head(sender)))
+                .resolver(Placeholder.component("receiver_head", plugin.getSkinHeadCache().head(receiver)))
                 .resolver(Placeholder.component("message", messageComponent))
                 .build();
 
@@ -404,17 +418,7 @@ public class ChatFormatter {
     // ============================================================
 
     public void notifyMentions(Player sender, String plainMessage, Collection<Player> viewers) {
-        String soundName = config.mentions().sound();
-        if (soundName == null || soundName.isEmpty()) return;
-
-        Sound sound;
-        try {
-            NamespacedKey key = NamespacedKey.fromString(soundName);
-            if (key == null) return;
-            sound = Registry.SOUNDS.get(key);
-        } catch (Exception ex) {
-            return;
-        }
+        Sound sound = mentionSound;
         if (sound == null) return;
 
         Set<UUID> viewerIds = new HashSet<>();
@@ -430,15 +434,31 @@ public class ChatFormatter {
         }
     }
 
+    private void resolveMentionSound() {
+        mentionSoundResolved = true;
+        mentionSound = null;
+
+        String soundName = config.mentions().sound();
+        if (soundName == null || soundName.isEmpty()) return;
+
+        try {
+            NamespacedKey key = NamespacedKey.fromString(soundName);
+            if (key == null) return;
+            mentionSound = Registry.SOUNDS.get(key);
+        } catch (Exception ignored) {
+            // некорректный звук в конфиге — упоминания без звука
+        }
+    }
+
     // ============================================================
     //  ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ
     // ============================================================
 
-    private String applyPapi(Player sender, Player viewer, String formatString) {
+    private String applyPapi(Player player, String formatString) {
         if (!isPapiEnabled()) {
             return formatString;
         }
-        return PlaceholderAPI.setPlaceholders(sender, formatString);
+        return PlaceholderAPI.setPlaceholders(player, formatString);
     }
 
     private Component buildDeleteButton(UUID messageId) {
@@ -452,8 +472,7 @@ public class ChatFormatter {
     // ============================================================
 
     public Component formatSocialSpy(String type, Player sender, Player receiver, String message) {
-        String format = applyPapi(sender, receiver, config.socialSpy().format());
-        format = convertAmpToMiniMessage(format);
+        String format = convertAmpToMiniMessage(applyPapi(sender, config.socialSpy().format()));
 
         TagResolver resolver = TagResolver.builder()
                 .resolver(Placeholder.unparsed("type", type))
@@ -470,19 +489,12 @@ public class ChatFormatter {
         String format = "<gray>[<gold>G:<white><group><gray>] "
                 + "<sender_head> %luckperms_prefix%<sender>%luckperms_suffix%<gray>: <reset><message>";
 
-        if (isPapiEnabled()) {
-            format = PlaceholderAPI.setPlaceholders(sender, format);
-        }
-        format = convertAmpToMiniMessage(format);
-
-        String senderHead = config.display().showPlayerHeads()
-                ? plugin.getSkinHeadCache().getHeadTag(sender)
-                : "";
+        format = convertAmpToMiniMessage(applyPapi(sender, format));
 
         TagResolver resolver = TagResolver.builder()
                 .resolver(Placeholder.unparsed("group", groupName))
                 .resolver(Placeholder.component("sender", sender.displayName()))
-                .resolver(Placeholder.parsed("sender_head", senderHead))
+                .resolver(Placeholder.component("sender_head", plugin.getSkinHeadCache().head(sender)))
                 .resolver(Placeholder.component("message", Component.text(message)))
                 .build();
 
@@ -494,42 +506,20 @@ public class ChatFormatter {
     // ============================================================
 
     public Component formatMe(Player sender, String action, Player viewer) {
-        String format = applyPapi(sender, viewer, config.rp().meFormat());
-        format = convertAmpToMiniMessage(format);
-
-        TagResolver resolver = TagResolver.builder()
-                .resolver(Placeholder.component("player", sender.displayName()))
-                .resolver(Placeholder.unparsed("message", action))
-                .build();
-        return miniMessage.deserialize(format, resolver);
+        return formatRp(applyPapi(sender, config.rp().meFormat()), sender, action, null);
     }
 
     public Component formatDo(Player sender, String action, Player viewer) {
-        String format = applyPapi(sender, viewer, config.rp().doFormat());
-        format = convertAmpToMiniMessage(format);
-
-        TagResolver resolver = TagResolver.builder()
-                .resolver(Placeholder.component("player", sender.displayName()))
-                .resolver(Placeholder.unparsed("message", action))
-                .build();
-        return miniMessage.deserialize(format, resolver);
+        return formatRp(applyPapi(sender, config.rp().doFormat()), sender, action, null);
     }
 
     public Component formatTry(Player sender, String action, boolean success, Player viewer) {
-        String format = applyPapi(sender, viewer, config.rp().tryFormat());
-        format = convertAmpToMiniMessage(format);
-
-        TagResolver resolver = TagResolver.builder()
-                .resolver(Placeholder.component("player", sender.displayName()))
-                .resolver(Placeholder.unparsed("message", action))
-                .resolver(Placeholder.parsed("result", success ? config.rp().trySuccess() : config.rp().tryFail()))
-                .build();
-        return miniMessage.deserialize(format, resolver);
+        return formatRp(applyPapi(sender, config.rp().tryFormat()), sender, action,
+                success ? config.rp().trySuccess() : config.rp().tryFail());
     }
 
     public Component formatRoll(Player sender, int result, int max, Player viewer) {
-        String format = applyPapi(sender, viewer, config.rp().rollFormat());
-        format = convertAmpToMiniMessage(format);
+        String format = convertAmpToMiniMessage(applyPapi(sender, config.rp().rollFormat()));
 
         TagResolver resolver = TagResolver.builder()
                 .resolver(Placeholder.component("player", sender.displayName()))
@@ -537,6 +527,16 @@ public class ChatFormatter {
                 .resolver(Placeholder.unparsed("max", String.valueOf(max)))
                 .build();
         return miniMessage.deserialize(format, resolver);
+    }
+
+    private Component formatRp(String rawFormat, Player sender, String action, String result) {
+        TagResolver.Builder builder = TagResolver.builder()
+                .resolver(Placeholder.component("player", sender.displayName()))
+                .resolver(Placeholder.unparsed("message", action));
+        if (result != null) {
+            builder.resolver(Placeholder.parsed("result", result));
+        }
+        return miniMessage.deserialize(convertAmpToMiniMessage(rawFormat), builder.build());
     }
 
     // ============================================================

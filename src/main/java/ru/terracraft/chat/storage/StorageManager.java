@@ -3,12 +3,13 @@ package ru.terracraft.chat.storage;
 import cc.carm.lib.easysql.api.SQLManager;
 import cc.carm.lib.easysql.api.SQLQuery;
 import cc.carm.plugin.minesql.MineSQL;
-import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.Bukkit;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -16,27 +17,56 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Хранилище (MineSQL / MariaDB).
+ *
+ * <p>Все <b>записи</b> идут через один упорядоченный writer-поток: раньше часть
+ * запросов уходила в пул EasySQL ({@code executeAsync}), часть — в собственный
+ * executor, из-за чего порядок не гарантировался (например, «добавить в игнор» →
+ * «убрать из игнора» могло примениться наоборот).
+ *
+ * <p>Все <b>чтения</b> синхронные и должны вызываться только с
+ * {@link ru.terracraft.chat.util.Tasks} (виртуальные потоки), а не из main.
+ *
+ * <p>Если MineSQL нет или источник не настроен — хранилище помечается
+ * недоступным, и все методы превращаются в no-op (плагин продолжает работать).
+ */
 public class StorageManager {
 
     public static final String SOURCE_NAME = "terracraft-chat";
 
-    /** Лимит на количество плейсхолдеров в одном IN(...) — защита от гигантских батчей. */
+    /** Лимит плейсхолдеров в одном IN(...). */
     private static final int IN_CHUNK_SIZE = 500;
 
-    private final JavaPlugin plugin;
+    /** Сколько пар (message_id, viewer_uuid) писать одним INSERT. */
+    private static final int VIEWER_CHUNK_SIZE = 100;
+
+    private static final Set<String> STAT_COLUMNS = Set.of(
+            "messages_sent", "messages_blocked", "swear_caught", "ads_caught"
+    );
+
+    private final TerraCraftChatPlugin plugin;
+
     private SQLManager sqlManager;
     private String tablePrefix;
+    private volatile boolean available;
+    private ExecutorService writer;
 
-    private ExecutorService asyncExecutor;
-    private final ConcurrentLinkedQueue<CompletableFuture<?>> pending = new ConcurrentLinkedQueue<>();
-
-    public StorageManager(JavaPlugin plugin) {
+    public StorageManager(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    /** Доступно ли хранилище (MineSQL найден и источник настроен). */
+    public boolean isAvailable() {
+        return available;
+    }
+
+    public String tablePrefix() {
+        return tablePrefix;
     }
 
     // ============================================================
@@ -44,40 +74,39 @@ public class StorageManager {
     // ============================================================
 
     public void init() {
-        var storage = ((TerraCraftChatPlugin) plugin).getChatConfig().storage();
+        var storage = plugin.getChatConfig().storage();
         this.tablePrefix = storage.tablePrefix();
 
-        if (!this.tablePrefix.matches("[a-zA-Z0-9_]*")) {
+        if (this.tablePrefix == null || !this.tablePrefix.matches("[a-zA-Z0-9_]*")) {
             plugin.getLogger().warning("Storage: некорректный tablePrefix '" + tablePrefix
                     + "', сбрасываю в 'tc_'");
             this.tablePrefix = "tc_";
         }
 
-        if (plugin.getServer().getPluginManager().getPlugin("MineSQL") == null) {
-            plugin.getLogger().info("MineSQL not found — storage disabled.");
+        if (Bukkit.getPluginManager().getPlugin("MineSQL") == null) {
+            plugin.getLogger().warning("MineSQL не найден — хранилище отключено "
+                    + "(история, игноры, статистика работать не будут).");
             return;
         }
 
         try {
             this.sqlManager = MineSQL.getRegistry().get(SOURCE_NAME);
             if (sqlManager == null) {
-                plugin.getLogger().severe("MineSQL source '" + SOURCE_NAME + "' not found!");
-                plugin.getLogger().severe("Add it to plugins/MineSQL/config.yml");
+                plugin.getLogger().severe("MineSQL источник '" + SOURCE_NAME + "' не найден! "
+                        + "Добавьте его в plugins/MineSQL/config.yml");
                 return;
             }
-            plugin.getLogger().info("Storage connected: MineSQL (" + SOURCE_NAME + ")");
             migrate();
+            this.available = true;
+            plugin.getLogger().info("Storage connected: MineSQL (" + SOURCE_NAME + ")");
         } catch (Exception e) {
             plugin.getLogger().severe("Storage init failed: " + e.getMessage());
-            e.printStackTrace();
             return;
         }
 
-        this.asyncExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "TerraCraftChat-Storage");
-            t.setDaemon(true);
-            return t;
-        });
+        // Один поток на все записи: FIFO-порядок + никаких гонок
+        this.writer = Executors.newSingleThreadExecutor(
+                Thread.ofPlatform().daemon().name("TerraCraftChat-Storage").factory());
     }
 
     /**
@@ -223,17 +252,43 @@ public class StorageManager {
         return sqlManager;
     }
 
-    private void async(Runnable task) {
-        if (asyncExecutor == null) {
-            task.run();
-            return;
+    /**
+     * Ставит запись в очередь упорядоченного writer-потока.
+     * Все методы записи проходят только через него.
+     */
+    private void write(String what, SqlTask task) {
+        if (!available || writer == null) return;
+
+        try {
+            writer.execute(() -> {
+                try {
+                    task.run();
+                } catch (Throwable e) {
+                    plugin.getLogger().warning("DB " + what + ": " + e.getMessage());
+                }
+            });
+        } catch (Throwable e) {
+            // writer уже закрыт (выключение плагина)
+            plugin.getLogger().fine("DB " + what + " skipped: " + e.getMessage());
         }
-        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            try { task.run(); }
-            catch (Exception e) { plugin.getLogger().warning("Storage async task failed: " + e.getMessage()); }
-        }, asyncExecutor);
-        pending.add(future);
-        pending.removeIf(CompletableFuture::isDone);
+    }
+
+    /** Задача записи: может бросать SQLException (выполняется на writer-потоке). */
+    @FunctionalInterface
+    private interface SqlTask {
+        void run() throws Exception;
+    }
+
+    private static String placeholders(int count) {
+        return String.join(",", Collections.nCopies(count, "?"));
+    }
+
+    private static <T> List<List<T>> chunk(List<T> source, int size) {
+        List<List<T>> chunks = new ArrayList<>();
+        for (int i = 0; i < source.size(); i += size) {
+            chunks.add(source.subList(i, Math.min(i + size, source.size())));
+        }
+        return chunks;
     }
 
     // ============================================================
@@ -241,13 +296,12 @@ public class StorageManager {
     // ============================================================
 
     public void addIgnore(UUID viewer, UUID target, long expiresAtMs) {
-        sql().createReplace(tablePrefix + "ignores")
-                .setColumnNames("viewer", "target", "expires_at")
-                .setParams(viewer.toString(), target.toString(), expiresAtMs)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB addIgnore: " + exception.getMessage())
-                );
+        write("addIgnore", () -> {
+            sql().createReplace(tablePrefix + "ignores")
+                    .setColumnNames("viewer", "target", "expires_at")
+                    .setParams(viewer.toString(), target.toString(), expiresAtMs)
+                    .execute();
+        });
     }
 
     public void addIgnore(UUID viewer, UUID target) {
@@ -255,18 +309,19 @@ public class StorageManager {
     }
 
     public void removeIgnore(UUID viewer, UUID target) {
-        sql().createDelete(tablePrefix + "ignores")
-                .addCondition("viewer", viewer.toString())
-                .addCondition("target", target.toString())
-                .build()
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB removeIgnore: " + exception.getMessage())
-                );
+        write("removeIgnore", () -> {
+            sql().createDelete(tablePrefix + "ignores")
+                    .addCondition("viewer", viewer.toString())
+                    .addCondition("target", target.toString())
+                    .build()
+                    .execute();
+        });
     }
 
     public Set<UUID> getIgnores(UUID viewer) {
         Set<UUID> result = new HashSet<>();
+        if (!available) return result;
+
         long now = System.currentTimeMillis();
         List<UUID> expired = new ArrayList<>();
 
@@ -287,7 +342,9 @@ public class StorageManager {
                     } else {
                         result.add(target);
                     }
-                } catch (IllegalArgumentException ignored) {}
+                } catch (IllegalArgumentException ignored) {
+                    // битая строка в БД
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB getIgnores: " + e.getMessage());
@@ -300,14 +357,13 @@ public class StorageManager {
     }
 
     public void cleanupExpiredIgnores(long nowMs) {
-        sql().createDelete(tablePrefix + "ignores")
-                .addCondition("expires_at", ">", 0)
-                .addCondition("expires_at", "<", nowMs)
-                .build()
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB cleanupExpiredIgnores: " + exception.getMessage())
-                );
+        write("cleanupExpiredIgnores", () -> {
+            sql().createDelete(tablePrefix + "ignores")
+                    .addCondition("expires_at", ">", 0)
+                    .addCondition("expires_at", "<", nowMs)
+                    .build()
+                    .execute();
+        });
     }
 
     // ============================================================
@@ -316,64 +372,56 @@ public class StorageManager {
 
     public void saveMessage(UUID id, UUID senderUuid, String senderName,
                             String channelId, String rawMessage, long timestamp) {
-        sql().createReplace(tablePrefix + "message_history")
-                .setColumnNames("id", "sender_uuid", "sender_name", "channel_id", "raw_message", "timestamp")
-                .setParams(id.toString(), senderUuid.toString(), senderName, channelId, rawMessage, timestamp)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB saveMessage: " + exception.getMessage())
-                );
+        write("saveMessage", () -> {
+            sql().createReplace(tablePrefix + "message_history")
+                    .setColumnNames("id", "sender_uuid", "sender_name", "channel_id", "raw_message", "timestamp")
+                    .setParams(id.toString(), senderUuid.toString(), senderName, channelId, rawMessage, timestamp)
+                    .execute();
+        });
     }
 
     public void deleteMessage(UUID id) {
-        async(() -> {
-            try {
-                sql().createDelete(tablePrefix + "message_viewers")
-                        .addCondition("message_id", id.toString())
-                        .build().execute();
-                sql().createDelete(tablePrefix + "thread_replies")
-                        .addCondition("parent_id", id.toString())
-                        .build().execute();
-                sql().createDelete(tablePrefix + "message_history")
-                        .addCondition("id", id.toString())
-                        .build().execute();
-            } catch (SQLException e) {
-                plugin.getLogger().warning("DB deleteMessage: " + e.getMessage());
-            }
+        write("deleteMessage", () -> {
+            sql().createDelete(tablePrefix + "message_viewers")
+                    .addCondition("message_id", id.toString())
+                    .build().execute();
+            sql().createDelete(tablePrefix + "thread_replies")
+                    .addCondition("parent_id", id.toString())
+                    .build().execute();
+            sql().createDelete(tablePrefix + "message_history")
+                    .addCondition("id", id.toString())
+                    .build().execute();
         });
     }
 
     /**
      * Удаляет старые сообщения и связанные с ними просмотры/ответы.
      *
-     * ИСПРАВЛЕНИЕ: addCondition(column, "IN", "(subquery)") в EasySQL оборачивает
-     * значение в кавычки → MariaDB получает `IN '(SELECT ...)'` и падает с 1064.
-     * Поэтому подзапрос встраивается в текст SQL, а граница — через prepared-параметр.
+     * <p>ИСПРАВЛЕНИЕ: {@code addCondition(column, "IN", "(subquery)")} в EasySQL
+     * оборачивает значение в кавычки → MariaDB получает {@code IN '(SELECT ...)'}
+     * и падает с 1064. Поэтому подзапрос встраивается в текст SQL,
+     * а граница — через prepared-параметр.
      */
     public void cleanupHistory(long olderThanMs) {
-        async(() -> {
-            try {
-                String selectOldIds = "SELECT id FROM " + tablePrefix
-                        + "message_history WHERE timestamp < ?";
+        write("cleanupHistory", () -> {
+            String selectOldIds = "SELECT id FROM " + tablePrefix
+                    + "message_history WHERE timestamp < ?";
 
-                sql().executeSQL(
-                        "DELETE FROM " + tablePrefix + "message_viewers WHERE message_id IN ("
-                                + selectOldIds + ")",
-                        new Object[]{ olderThanMs }
-                );
+            sql().executeSQL(
+                    "DELETE FROM " + tablePrefix + "message_viewers WHERE message_id IN ("
+                            + selectOldIds + ")",
+                    new Object[]{ olderThanMs }
+            );
 
-                sql().executeSQL(
-                        "DELETE FROM " + tablePrefix + "thread_replies WHERE parent_id IN ("
-                                + selectOldIds + ")",
-                        new Object[]{ olderThanMs }
-                );
+            sql().executeSQL(
+                    "DELETE FROM " + tablePrefix + "thread_replies WHERE parent_id IN ("
+                            + selectOldIds + ")",
+                    new Object[]{ olderThanMs }
+            );
 
-                sql().createDelete(tablePrefix + "message_history")
-                        .addCondition("timestamp", "<", olderThanMs)
-                        .build().execute();
-            } catch (Exception e) {
-                plugin.getLogger().warning("DB cleanupHistory: " + e.getMessage());
-            }
+            sql().createDelete(tablePrefix + "message_history")
+                    .addCondition("timestamp", "<", olderThanMs)
+                    .build().execute();
         });
     }
 
@@ -386,37 +434,43 @@ public class StorageManager {
     // ============================================================
 
     /**
-     * ИСПРАВЛЕНИЕ: INSERT IGNORE, чтобы повторная запись той же пары
-     * (message_id, viewer_uuid) не роняла весь батч.
+     * Пишет аудиторию сообщения пачками (INSERT IGNORE, чтобы повтор
+     * пары (message_id, viewer_uuid) не ронял весь батч).
+     *
+     * <p>Раньше одним INSERT отправлялись все зрители — на сервере
+     * с сотней онлайна это гигантский запрос на каждое сообщение.
      */
     public void saveMessageViewers(UUID messageId, Set<UUID> viewers) {
         if (viewers.isEmpty()) return;
 
-        Set<UUID> snapshot = Set.copyOf(viewers);
+        List<UUID> snapshot = List.copyOf(viewers);
 
-        async(() -> {
-            try {
+        write("saveMessageViewers", () -> {
+            String id = messageId.toString();
+
+            for (List<UUID> chunk : chunk(snapshot, VIEWER_CHUNK_SIZE)) {
                 StringBuilder sql = new StringBuilder(
-                        "INSERT IGNORE INTO " + tablePrefix + "message_viewers (message_id, viewer_uuid) VALUES ");
-                Object[] params = new Object[snapshot.size() * 2];
+                        "INSERT IGNORE INTO " + tablePrefix
+                                + "message_viewers (message_id, viewer_uuid) VALUES ");
+
+                Object[] params = new Object[chunk.size() * 2];
                 int i = 0;
-                boolean first = true;
-                for (UUID viewer : snapshot) {
-                    if (!first) sql.append(",");
-                    first = false;
+                for (int index = 0; index < chunk.size(); index++) {
+                    if (index > 0) sql.append(",");
                     sql.append("(?, ?)");
-                    params[i++] = messageId.toString();
-                    params[i++] = viewer.toString();
+                    params[i++] = id;
+                    params[i++] = chunk.get(index).toString();
                 }
+
                 sql().executeSQL(sql.toString(), params);
-            } catch (Exception e) {
-                plugin.getLogger().warning("DB saveMessageViewers: " + e.getMessage());
             }
         });
     }
 
     public List<UUID> loadViewers(UUID messageId) {
         List<UUID> result = new ArrayList<>();
+        if (!available) return result;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "message_viewers")
                 .selectColumns("viewer_uuid")
@@ -424,8 +478,11 @@ public class StorageManager {
                 .build().execute()) {
             ResultSet rs = query.getResultSet();
             while (rs.next()) {
-                try { result.add(UUID.fromString(rs.getString("viewer_uuid"))); }
-                catch (IllegalArgumentException ignored) {}
+                try {
+                    result.add(UUID.fromString(rs.getString("viewer_uuid")));
+                } catch (IllegalArgumentException ignored) {
+                    // битая строка
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB loadViewers: " + e.getMessage());
@@ -435,13 +492,11 @@ public class StorageManager {
 
     public Map<UUID, List<UUID>> loadViewersBatch(List<UUID> messageIds) {
         Map<UUID, List<UUID>> result = new HashMap<>();
-        if (messageIds.isEmpty()) return result;
+        if (!available || messageIds.isEmpty()) return result;
 
-        for (int offset = 0; offset < messageIds.size(); offset += IN_CHUNK_SIZE) {
-            List<UUID> chunk = messageIds.subList(offset, Math.min(offset + IN_CHUNK_SIZE, messageIds.size()));
-            String placeholders = String.join(",", java.util.Collections.nCopies(chunk.size(), "?"));
+        for (List<UUID> chunk : chunk(messageIds, IN_CHUNK_SIZE)) {
             String rawSql = "SELECT message_id, viewer_uuid FROM " + tablePrefix
-                    + "message_viewers WHERE message_id IN (" + placeholders + ")";
+                    + "message_viewers WHERE message_id IN (" + placeholders(chunk.size()) + ")";
             Object[] params = chunk.stream().map(UUID::toString).toArray();
 
             try (SQLQuery query = sql().createQuery()
@@ -454,7 +509,9 @@ public class StorageManager {
                         UUID msgId = UUID.fromString(rs.getString("message_id"));
                         UUID viewerId = UUID.fromString(rs.getString("viewer_uuid"));
                         result.computeIfAbsent(msgId, k -> new ArrayList<>()).add(viewerId);
-                    } catch (IllegalArgumentException ignored) {}
+                    } catch (IllegalArgumentException ignored) {
+                        // битая строка
+                    }
                 }
             } catch (SQLException e) {
                 plugin.getLogger().warning("DB loadViewersBatch: " + e.getMessage());
@@ -469,6 +526,8 @@ public class StorageManager {
 
     public List<HistoryRow> loadRecentHistory(long cutoffMs, int limit) {
         List<HistoryRow> result = new ArrayList<>();
+        if (!available) return result;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "message_history")
                 .selectColumns("id", "sender_uuid", "sender_name", "channel_id", "raw_message", "timestamp")
@@ -478,16 +537,8 @@ public class StorageManager {
                 .build().execute()) {
             ResultSet rs = query.getResultSet();
             while (rs.next()) {
-                try {
-                    result.add(new HistoryRow(
-                            UUID.fromString(rs.getString("id")),
-                            UUID.fromString(rs.getString("sender_uuid")),
-                            rs.getString("sender_name"),
-                            rs.getString("channel_id"),
-                            rs.getString("raw_message"),
-                            rs.getLong("timestamp")
-                    ));
-                } catch (IllegalArgumentException ignored) {}
+                HistoryRow row = readHistoryRow(rs);
+                if (row != null) result.add(row);
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB loadRecentHistory: " + e.getMessage());
@@ -497,6 +548,8 @@ public class StorageManager {
 
     public List<HistoryRow> loadHistoryBySender(UUID senderUuid, int limit) {
         List<HistoryRow> result = new ArrayList<>();
+        if (!available) return result;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "message_history")
                 .selectColumns("id", "sender_uuid", "sender_name", "channel_id", "raw_message", "timestamp")
@@ -506,21 +559,28 @@ public class StorageManager {
                 .build().execute()) {
             ResultSet rs = query.getResultSet();
             while (rs.next()) {
-                try {
-                    result.add(new HistoryRow(
-                            UUID.fromString(rs.getString("id")),
-                            UUID.fromString(rs.getString("sender_uuid")),
-                            rs.getString("sender_name"),
-                            rs.getString("channel_id"),
-                            rs.getString("raw_message"),
-                            rs.getLong("timestamp")
-                    ));
-                } catch (IllegalArgumentException ignored) {}
+                HistoryRow row = readHistoryRow(rs);
+                if (row != null) result.add(row);
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB loadHistoryBySender: " + e.getMessage());
         }
         return result;
+    }
+
+    private HistoryRow readHistoryRow(ResultSet rs) throws SQLException {
+        try {
+            return new HistoryRow(
+                    UUID.fromString(rs.getString("id")),
+                    UUID.fromString(rs.getString("sender_uuid")),
+                    rs.getString("sender_name"),
+                    rs.getString("channel_id"),
+                    rs.getString("raw_message"),
+                    rs.getLong("timestamp")
+            );
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     public record HistoryRow(UUID id, UUID senderUuid, String senderName,
@@ -531,16 +591,15 @@ public class StorageManager {
     // ============================================================
 
     public void setNick(UUID uuid, String nick) {
-        sql().createReplace(tablePrefix + "nicks")
+        write("setNick", () -> sql().createReplace(tablePrefix + "nicks")
                 .setColumnNames("uuid", "nick")
                 .setParams(uuid.toString(), nick)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB setNick: " + exception.getMessage())
-                );
+                .execute());
     }
 
     public String getNick(UUID uuid) {
+        if (!available) return null;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "nicks")
                 .selectColumns("nick")
@@ -555,17 +614,16 @@ public class StorageManager {
     }
 
     public void removeNick(UUID uuid) {
-        sql().createDelete(tablePrefix + "nicks")
+        write("removeNick", () -> sql().createDelete(tablePrefix + "nicks")
                 .addCondition("uuid", uuid.toString())
                 .build()
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB removeNick: " + exception.getMessage())
-                );
+                .execute());
     }
 
     public Map<UUID, String> getAllNicks() {
         Map<UUID, String> result = new HashMap<>();
+        if (!available) return result;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "nicks")
                 .selectColumns("uuid", "nick")
@@ -574,7 +632,9 @@ public class StorageManager {
             while (rs.next()) {
                 try {
                     result.put(UUID.fromString(rs.getString("uuid")), rs.getString("nick"));
-                } catch (IllegalArgumentException ignored) {}
+                } catch (IllegalArgumentException ignored) {
+                    // битая строка
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB getAllNicks: " + e.getMessage());
@@ -587,16 +647,15 @@ public class StorageManager {
     // ============================================================
 
     public void setSocialSpy(UUID uuid, boolean enabled) {
-        sql().createReplace(tablePrefix + "socialspy")
+        write("setSocialSpy", () -> sql().createReplace(tablePrefix + "socialspy")
                 .setColumnNames("uuid", "enabled")
                 .setParams(uuid.toString(), enabled)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB setSocialSpy: " + exception.getMessage())
-                );
+                .execute());
     }
 
     public boolean isSocialSpy(UUID uuid) {
+        if (!available) return false;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "socialspy")
                 .selectColumns("enabled")
@@ -612,6 +671,8 @@ public class StorageManager {
 
     public Set<UUID> getAllSocialSpy() {
         Set<UUID> result = new HashSet<>();
+        if (!available) return result;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "socialspy")
                 .selectColumns("uuid")
@@ -619,8 +680,11 @@ public class StorageManager {
                 .build().execute()) {
             ResultSet rs = query.getResultSet();
             while (rs.next()) {
-                try { result.add(UUID.fromString(rs.getString("uuid"))); }
-                catch (IllegalArgumentException ignored) {}
+                try {
+                    result.add(UUID.fromString(rs.getString("uuid")));
+                } catch (IllegalArgumentException ignored) {
+                    // битая строка
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB getAllSocialSpy: " + e.getMessage());
@@ -633,16 +697,15 @@ public class StorageManager {
     // ============================================================
 
     public void setReply(UUID viewer, UUID target) {
-        sql().createReplace(tablePrefix + "replies")
+        write("setReply", () -> sql().createReplace(tablePrefix + "replies")
                 .setColumnNames("viewer", "target")
                 .setParams(viewer.toString(), target.toString())
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB setReply: " + exception.getMessage())
-                );
+                .execute());
     }
 
     public UUID getReply(UUID viewer) {
+        if (!available) return null;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "replies")
                 .selectColumns("target")
@@ -650,20 +713,17 @@ public class StorageManager {
                 .build().execute()) {
             ResultSet rs = query.getResultSet();
             if (rs.next()) return UUID.fromString(rs.getString("target"));
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalArgumentException e) {
             plugin.getLogger().warning("DB getReply: " + e.getMessage());
         }
         return null;
     }
 
     public void clearReply(UUID viewer) {
-        sql().createDelete(tablePrefix + "replies")
+        write("clearReply", () -> sql().createDelete(tablePrefix + "replies")
                 .addCondition("viewer", viewer.toString())
                 .build()
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB clearReply: " + exception.getMessage())
-                );
+                .execute());
     }
 
     // ============================================================
@@ -671,16 +731,15 @@ public class StorageManager {
     // ============================================================
 
     public void setActiveChannel(UUID uuid, String channelId) {
-        sql().createReplace(tablePrefix + "channels")
+        write("setActiveChannel", () -> sql().createReplace(tablePrefix + "channels")
                 .setColumnNames("uuid", "channel_id")
                 .setParams(uuid.toString(), channelId)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB setActiveChannel: " + exception.getMessage())
-                );
+                .execute());
     }
 
     public String getActiveChannel(UUID uuid) {
+        if (!available) return null;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "channels")
                 .selectColumns("channel_id")
@@ -695,13 +754,10 @@ public class StorageManager {
     }
 
     public void clearActiveChannel(UUID uuid) {
-        sql().createDelete(tablePrefix + "channels")
+        write("clearActiveChannel", () -> sql().createDelete(tablePrefix + "channels")
                 .addCondition("uuid", uuid.toString())
                 .build()
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB clearActiveChannel: " + exception.getMessage())
-                );
+                .execute());
     }
 
     // ============================================================
@@ -710,13 +766,10 @@ public class StorageManager {
 
     public void logRule(String ruleId, UUID playerUuid, String playerName,
                         String message, long timestamp) {
-        sql().createInsert(tablePrefix + "rules_log")
+        write("logRule", () -> sql().createInsert(tablePrefix + "rules_log")
                 .setColumnNames("rule_id", "player_uuid", "player_name", "message", "timestamp")
                 .setParams(ruleId, playerUuid.toString(), playerName, message, timestamp)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB logRule: " + exception.getMessage())
-                );
+                .execute());
     }
 
     // ============================================================
@@ -728,43 +781,40 @@ public class StorageManager {
     }
 
     /**
-     * ИСПРАВЛЕНИЕ: вместо UPDATE-then-INSERT (гонка, потеря инкремента)
-     * используем атомарный INSERT ... ON DUPLICATE KEY UPDATE — родной для MariaDB.
+     * Атомарный INSERT ... ON DUPLICATE KEY UPDATE — вместо UPDATE-then-INSERT
+     * (гонка, потеря инкремента).
      */
     public void incrementStats(UUID uuid, String... columns) {
         if (columns.length == 0) return;
 
-        for (String c : columns) {
-            switch (c) {
-                case "messages_sent", "messages_blocked", "swear_caught", "ads_caught" -> {}
-                default -> { return; }
-            }
+        // Защита от подстановки произвольных имён столбцов
+        for (String column : columns) {
+            if (!STAT_COLUMNS.contains(column)) return;
         }
 
-        async(() -> {
-            try {
-                StringBuilder cols = new StringBuilder("uuid");
-                StringBuilder vals = new StringBuilder("?");
-                StringBuilder upd = new StringBuilder();
-                for (int i = 0; i < columns.length; i++) {
-                    cols.append(", ").append(columns[i]);
-                    vals.append(", 1");
-                    if (i > 0) upd.append(", ");
-                    upd.append(columns[i]).append(" = ").append(columns[i]).append(" + 1");
-                }
+        write("incrementStats", () -> {
+            StringBuilder cols = new StringBuilder("uuid");
+            StringBuilder vals = new StringBuilder("?");
+            StringBuilder update = new StringBuilder();
 
-                sql().executeSQL(
-                        "INSERT INTO " + tablePrefix + "player_stats (" + cols + ") VALUES (" + vals + ") " +
-                                "ON DUPLICATE KEY UPDATE " + upd,
-                        new Object[]{ uuid.toString() }
-                );
-            } catch (Exception e) {
-                plugin.getLogger().warning("DB incrementStats: " + e.getMessage());
+            for (int i = 0; i < columns.length; i++) {
+                cols.append(", ").append(columns[i]);
+                vals.append(", 1");
+                if (i > 0) update.append(", ");
+                update.append(columns[i]).append(" = ").append(columns[i]).append(" + 1");
             }
+
+            sql().executeSQL(
+                    "INSERT INTO " + tablePrefix + "player_stats (" + cols + ") VALUES (" + vals + ") "
+                            + "ON DUPLICATE KEY UPDATE " + update,
+                    new Object[]{ uuid.toString() }
+            );
         });
     }
 
     public PlayerStats getPlayerStats(UUID uuid) {
+        if (!available) return new PlayerStats(0, 0, 0, 0);
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "player_stats")
                 .selectColumns("messages_sent", "messages_blocked", "swear_caught", "ads_caught")
@@ -794,17 +844,17 @@ public class StorageManager {
 
     public void saveThreadReply(UUID id, UUID parentId, UUID authorUuid,
                                 String authorName, String text, long timestamp) {
-        sql().createReplace(tablePrefix + "thread_replies")
+        write("saveThreadReply", () -> sql().createReplace(tablePrefix + "thread_replies")
                 .setColumnNames("id", "parent_id", "author_uuid", "author_name", "text", "timestamp")
-                .setParams(id.toString(), parentId.toString(), authorUuid.toString(), authorName, text, timestamp)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB saveThreadReply: " + exception.getMessage())
-                );
+                .setParams(id.toString(), parentId.toString(), authorUuid.toString(),
+                        authorName, text, timestamp)
+                .execute());
     }
 
     public List<ThreadReplyRow> getThreadReplies(UUID parentId) {
         List<ThreadReplyRow> result = new ArrayList<>();
+        if (!available) return result;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "thread_replies")
                 .selectColumns("id", "author_uuid", "author_name", "text", "timestamp")
@@ -813,15 +863,8 @@ public class StorageManager {
                 .build().execute()) {
             ResultSet rs = query.getResultSet();
             while (rs.next()) {
-                try {
-                    result.add(new ThreadReplyRow(
-                            UUID.fromString(rs.getString("id")),
-                            UUID.fromString(rs.getString("author_uuid")),
-                            rs.getString("author_name"),
-                            rs.getString("text"),
-                            rs.getLong("timestamp")
-                    ));
-                } catch (IllegalArgumentException ignored) {}
+                ThreadReplyRow row = readThreadReply(rs);
+                if (row != null) result.add(row);
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB getThreadReplies: " + e.getMessage());
@@ -831,13 +874,12 @@ public class StorageManager {
 
     public Map<UUID, List<ThreadReplyRow>> getThreadRepliesBatch(List<UUID> parentIds) {
         Map<UUID, List<ThreadReplyRow>> result = new HashMap<>();
-        if (parentIds.isEmpty()) return result;
+        if (!available || parentIds.isEmpty()) return result;
 
-        for (int offset = 0; offset < parentIds.size(); offset += IN_CHUNK_SIZE) {
-            List<UUID> chunk = parentIds.subList(offset, Math.min(offset + IN_CHUNK_SIZE, parentIds.size()));
-            String placeholders = String.join(",", java.util.Collections.nCopies(chunk.size(), "?"));
+        for (List<UUID> chunk : chunk(parentIds, IN_CHUNK_SIZE)) {
             String rawSql = "SELECT parent_id, id, author_uuid, author_name, text, timestamp FROM "
-                    + tablePrefix + "thread_replies WHERE parent_id IN (" + placeholders + ") ORDER BY timestamp ASC";
+                    + tablePrefix + "thread_replies WHERE parent_id IN ("
+                    + placeholders(chunk.size()) + ") ORDER BY timestamp ASC";
             Object[] params = chunk.stream().map(UUID::toString).toArray();
 
             try (SQLQuery query = sql().createQuery()
@@ -846,34 +888,37 @@ public class StorageManager {
                     .execute()) {
                 ResultSet rs = query.getResultSet();
                 while (rs.next()) {
-                    try {
-                        UUID parentId = UUID.fromString(rs.getString("parent_id"));
-                        result.computeIfAbsent(parentId, k -> new ArrayList<>()).add(
-                                new ThreadReplyRow(
-                                        UUID.fromString(rs.getString("id")),
-                                        UUID.fromString(rs.getString("author_uuid")),
-                                        rs.getString("author_name"),
-                                        rs.getString("text"),
-                                        rs.getLong("timestamp")
-                                )
-                        );
-                    } catch (IllegalArgumentException ignored) {}
+                    ThreadReplyRow row = readThreadReply(rs);
+                    if (row == null) continue;
+                    UUID parentId = UUID.fromString(rs.getString("parent_id"));
+                    result.computeIfAbsent(parentId, k -> new ArrayList<>()).add(row);
                 }
-            } catch (SQLException e) {
+            } catch (SQLException | IllegalArgumentException e) {
                 plugin.getLogger().warning("DB getThreadRepliesBatch: " + e.getMessage());
             }
         }
         return result;
     }
 
+    private ThreadReplyRow readThreadReply(ResultSet rs) throws SQLException {
+        try {
+            return new ThreadReplyRow(
+                    UUID.fromString(rs.getString("id")),
+                    UUID.fromString(rs.getString("author_uuid")),
+                    rs.getString("author_name"),
+                    rs.getString("text"),
+                    rs.getLong("timestamp")
+            );
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
     public void deleteThreadReplies(UUID parentId) {
-        sql().createDelete(tablePrefix + "thread_replies")
+        write("deleteThreadReplies", () -> sql().createDelete(tablePrefix + "thread_replies")
                 .addCondition("parent_id", parentId.toString())
                 .build()
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB deleteThreadReplies: " + exception.getMessage())
-                );
+                .execute());
     }
 
     public record ThreadReplyRow(UUID id, UUID authorUuid, String authorName,
@@ -883,7 +928,10 @@ public class StorageManager {
     //  Group chats
     // ============================================================
 
+    /** Создаёт группу (I/O — вызывать через {@link ru.terracraft.chat.util.Tasks}). */
     public UUID createGroup(String name, UUID ownerUuid) {
+        if (!available) return null;
+
         UUID id = UUID.randomUUID();
         try {
             sql().createInsert(tablePrefix + "chat_groups")
@@ -897,7 +945,10 @@ public class StorageManager {
         }
     }
 
+    /** @return true если участник добавлен (или уже был) */
     public boolean addGroupMember(UUID groupId, UUID memberUuid) {
+        if (!available) return false;
+
         try {
             sql().createInsert(tablePrefix + "chat_group_members")
                     .setColumnNames("group_id", "member_uuid")
@@ -906,7 +957,7 @@ public class StorageManager {
             return true;
         } catch (SQLException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
-            // 1062 = Duplicate entry (участник уже в группе) — не ошибка, просто игнорируем
+            // 1062 = Duplicate entry (участник уже в группе) — не ошибка
             if (msg.contains("duplicate") || msg.contains("1062")) {
                 return true;
             }
@@ -916,6 +967,8 @@ public class StorageManager {
     }
 
     public boolean removeGroupMember(UUID groupId, UUID memberUuid) {
+        if (!available) return false;
+
         try {
             sql().createDelete(tablePrefix + "chat_group_members")
                     .addCondition("group_id", groupId.toString())
@@ -930,6 +983,8 @@ public class StorageManager {
 
     public List<UUID> getGroupMembers(UUID groupId) {
         List<UUID> result = new ArrayList<>();
+        if (!available) return result;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "chat_group_members")
                 .selectColumns("member_uuid")
@@ -937,8 +992,11 @@ public class StorageManager {
                 .build().execute()) {
             ResultSet rs = query.getResultSet();
             while (rs.next()) {
-                try { result.add(UUID.fromString(rs.getString("member_uuid"))); }
-                catch (IllegalArgumentException ignored) {}
+                try {
+                    result.add(UUID.fromString(rs.getString("member_uuid")));
+                } catch (IllegalArgumentException ignored) {
+                    // битая строка
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("DB getGroupMembers: " + e.getMessage());
@@ -947,6 +1005,8 @@ public class StorageManager {
     }
 
     public GroupRow getGroupByName(String name) {
+        if (!available) return null;
+
         try (SQLQuery query = sql().createQuery()
                 .inTable(tablePrefix + "chat_groups")
                 .selectColumns("id", "name", "owner_uuid", "created_at")
@@ -961,39 +1021,33 @@ public class StorageManager {
                         rs.getLong("created_at")
                 );
             }
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalArgumentException e) {
             plugin.getLogger().warning("DB getGroupByName: " + e.getMessage());
         }
         return null;
     }
 
     public void deleteGroup(UUID groupId) {
-        async(() -> {
-            try {
-                sql().createDelete(tablePrefix + "chat_group_history")
-                        .addCondition("group_id", groupId.toString())
-                        .build().execute();
-                sql().createDelete(tablePrefix + "chat_group_members")
-                        .addCondition("group_id", groupId.toString())
-                        .build().execute();
-                sql().createDelete(tablePrefix + "chat_groups")
-                        .addCondition("id", groupId.toString())
-                        .build().execute();
-            } catch (SQLException e) {
-                plugin.getLogger().warning("DB deleteGroup: " + e.getMessage());
-            }
+        write("deleteGroup", () -> {
+            sql().createDelete(tablePrefix + "chat_group_history")
+                    .addCondition("group_id", groupId.toString())
+                    .build().execute();
+            sql().createDelete(tablePrefix + "chat_group_members")
+                    .addCondition("group_id", groupId.toString())
+                    .build().execute();
+            sql().createDelete(tablePrefix + "chat_groups")
+                    .addCondition("id", groupId.toString())
+                    .build().execute();
         });
     }
 
     public void saveGroupMessage(UUID id, UUID groupId, UUID senderUuid,
                                  String senderName, String message, long timestamp) {
-        sql().createInsert(tablePrefix + "chat_group_history")
+        write("saveGroupMessage", () -> sql().createInsert(tablePrefix + "chat_group_history")
                 .setColumnNames("id", "group_id", "sender_uuid", "sender_name", "message", "timestamp")
-                .setParams(id.toString(), groupId.toString(), senderUuid.toString(), senderName, message, timestamp)
-                .executeAsync(
-                        success -> {},
-                        (exception, action) -> plugin.getLogger().warning("DB saveGroupMessage: " + exception.getMessage())
-                );
+                .setParams(id.toString(), groupId.toString(), senderUuid.toString(),
+                        senderName, message, timestamp)
+                .execute());
     }
 
     public record GroupRow(UUID id, String name, UUID ownerUuid, long createdAt) {}
@@ -1002,17 +1056,39 @@ public class StorageManager {
     //  CLOSE
     // ============================================================
 
+    /** Дожидается, пока writer допишет всё, что накопилось в очереди. */
+    public boolean flush(long timeoutSeconds) {
+        if (writer == null) return true;
+
+        CompletableFuture<Void> barrier = new CompletableFuture<>();
+        try {
+            writer.execute(() -> barrier.complete(null));
+        } catch (Throwable e) {
+            return false;
+        }
+        try {
+            barrier.get(timeoutSeconds, TimeUnit.SECONDS);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public void close() {
-        if (asyncExecutor != null) {
-            asyncExecutor.shutdown();
+        if (writer != null) {
+            if (!flush(5)) {
+                plugin.getLogger().warning("Storage: очередь записей не успела опустеть за 5 сек.");
+            }
+            writer.shutdown();
             try {
-                if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    plugin.getLogger().warning("Storage: не все задачи завершились за 5 сек.");
+                if (!writer.awaitTermination(5, TimeUnit.SECONDS)) {
+                    writer.shutdownNow();
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                writer.shutdownNow();
             }
-            asyncExecutor = null;
+            writer = null;
         }
     }
 }

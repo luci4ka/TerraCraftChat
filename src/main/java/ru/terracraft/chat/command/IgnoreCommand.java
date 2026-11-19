@@ -24,6 +24,7 @@ public class IgnoreCommand {
         this.plugin = plugin;
     }
 
+    @SuppressWarnings("unchecked")
     public void register() {
         new CommandAPICommand("ignore")
                 .withPermission("terracraftchat.ignore")
@@ -59,7 +60,7 @@ public class IgnoreCommand {
                     if (profiles == null || profiles.isEmpty()) return;
 
                     PlayerProfile profile = profiles.get(0);
-                    UUID targetId = profile.getUniqueId();
+                    UUID targetId = profile.getId();
                     String rawName = profile.getName();
                     String name = rawName != null ? rawName : targetId.toString();
 

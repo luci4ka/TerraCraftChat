@@ -1,13 +1,12 @@
 package ru.terracraft.chat.format;
 
 import net.kyori.adventure.text.Component;
-import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
@@ -19,14 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class HeadDisplayManager {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private int durationTicks;
 
     private final Map<UUID, TextDisplay> activeDisplays = new ConcurrentHashMap<>();
     private final Map<UUID, BukkitTask> removalTasks = new ConcurrentHashMap<>();
     private final Map<UUID, BukkitTask> followTasks = new ConcurrentHashMap<>();
 
-    public HeadDisplayManager(JavaPlugin plugin, int durationSeconds) {
+    public HeadDisplayManager(TerraCraftChatPlugin plugin, int durationSeconds) {
         this.plugin = plugin;
         this.durationTicks = Math.max(1, durationSeconds) * 20;
     }
@@ -44,6 +43,10 @@ public class HeadDisplayManager {
                 entity.text(message);
                 entity.setBillboard(Display.Billboard.CENTER);
                 entity.setPersistent(false);
+                // По умолчанию дисплей невидим никому: показываем только владельцу.
+                // Это дешевле цикла hideEntity по всем игрокам и заодно решает
+                // гонку «игрок зашёл, пока дисплей спавнился».
+                entity.setVisibleByDefault(false);
                 entity.setSeeThrough(false);
                 entity.setShadowed(true);
                 entity.setDefaultBackground(false);
@@ -64,13 +67,7 @@ public class HeadDisplayManager {
             return;
         }
 
-        // Скрываем дисплей от всех, кроме владельца
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (!online.equals(player)) {
-                online.hideEntity(plugin, display);
-            }
-        }
-
+        player.showEntity(plugin, display);
         activeDisplays.put(playerId, display);
 
         // Следование за игроком — каждые 2 тика
@@ -111,12 +108,13 @@ public class HeadDisplayManager {
         }
     }
 
+    /**
+     * Дисплеи создаются с {@code setVisibleByDefault(false)} и показываются
+     * только владельцу, поэтому скрывать их от входящего игрока не нужно.
+     * Метод оставлен для обратной совместимости вызовов.
+     */
     public void hideAllFrom(Player viewer) {
-        for (TextDisplay display : activeDisplays.values()) {
-            if (display != null && display.isValid()) {
-                viewer.hideEntity(plugin, display);
-            }
-        }
+        // no-op: см. showMessage() — дисплеи невидимы по умолчанию
     }
 
     private void removeExisting(UUID playerId) {

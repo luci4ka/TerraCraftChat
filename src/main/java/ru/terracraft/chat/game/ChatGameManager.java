@@ -4,7 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.translation.Argument;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import ru.terracraft.chat.config.ChatConfig;
 
@@ -21,7 +21,7 @@ public class ChatGameManager {
 
     private static final long WRONG_ANSWER_COOLDOWN_MS = 3000L;
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private ChatConfig config;          // ← не final
     private final GamesConfig gamesConfig;
     private final Random random = new Random();
@@ -41,7 +41,7 @@ public class ChatGameManager {
     private volatile boolean gameActive = false;
     private volatile boolean manuallyDisabled = false;   // ← toggle
 
-    public ChatGameManager(JavaPlugin plugin, ChatConfig config, GamesConfig gamesConfig) {
+    public ChatGameManager(TerraCraftChatPlugin plugin, ChatConfig config, GamesConfig gamesConfig) {
         this.plugin = plugin;
         this.config = config;
         this.gamesConfig = gamesConfig;

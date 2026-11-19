@@ -2,9 +2,10 @@ package ru.terracraft.chat.manager;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.model.Channel;
 import ru.terracraft.chat.storage.StorageManager;
+import ru.terracraft.chat.util.Tasks;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -19,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ChannelManager {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private final StorageManager storage;
 
     private volatile Map<String, Channel> channels = Map.of();
@@ -28,15 +29,15 @@ public class ChannelManager {
 
     private final Map<UUID, String> activeByPlayer = new ConcurrentHashMap<>();
 
-    public ChannelManager(JavaPlugin plugin, StorageManager storage) {
+    public ChannelManager(TerraCraftChatPlugin plugin, StorageManager storage) {
         this.plugin = plugin;
         this.storage = storage;
     }
 
     public void load(Collection<Channel> list, String defaultId) {
         Map<String, Channel> map = new LinkedHashMap<>();
-        for (Channel ch : list) {
-            map.put(ch.id(), ch);
+        for (Channel channel : list) {
+            map.put(channel.id(), channel);
         }
 
         List<Channel> pref = map.values().stream()
@@ -82,27 +83,24 @@ public class ChannelManager {
     public void preload(Player player) {
         UUID uuid = player.getUniqueId();
         if (activeByPlayer.containsKey(uuid)) return;
+        if (!storage.isAvailable()) return;
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            try {
-                String id = storage.getActiveChannel(uuid);
-                if (id == null) return;
-                if (!player.isOnline()) return;
+        Tasks.supply(plugin, "channel/" + player.getName(), () -> storage.getActiveChannel(uuid))
+                .thenAccept(id -> {
+                    if (id == null) return;
+                    if (!player.isOnline()) return;
 
-                // Если активный канал уже установлен (пока грузились) — не перезаписываем
-                activeByPlayer.putIfAbsent(uuid, id);
-            } catch (Exception e) {
-                plugin.getLogger().warning("ChannelManager.preload async failed: " + e.getMessage());
-            }
-        });
+                    // Если активный канал уже установлен (пока грузились) — не перезаписываем
+                    activeByPlayer.putIfAbsent(uuid, id);
+                });
     }
 
     public Resolved resolve(Player sender, String message) {
         List<Channel> pref = this.prefixed;
-        for (Channel ch : pref) {
-            String stripped = ch.stripPrefix(message);
+        for (Channel channel : pref) {
+            String stripped = channel.stripPrefix(message);
             if (stripped != null) {
-                return new Resolved(ch, stripped);
+                return new Resolved(channel, stripped);
             }
         }
 
@@ -120,15 +118,15 @@ public class ChannelManager {
 
     public boolean canUse(Player player, Channel channel) {
         if (channel == null) return false;
-        String perm = channel.permission();
-        if (perm == null || perm.isEmpty()) return true;
-        return player.hasPermission(perm);
+        String permission = channel.permission();
+        if (permission == null || permission.isEmpty()) return true;
+        return player.hasPermission(permission);
     }
 
     public Channel getActive(Player player) {
         String id = activeByPlayer.get(player.getUniqueId());
-        Channel ch = get(id);
-        return ch != null ? ch : defaultChannel;
+        Channel channel = get(id);
+        return channel != null ? channel : defaultChannel;
     }
 
     public void setActive(Player player, Channel channel) {
@@ -147,10 +145,19 @@ public class ChannelManager {
 
     public List<Channel> getAvailable(Player player) {
         List<Channel> result = new ArrayList<>();
-        for (Channel ch : this.channels.values()) {
-            if (canUse(player, ch)) result.add(ch);
+        for (Channel channel : this.channels.values()) {
+            if (canUse(player, channel)) result.add(channel);
         }
         return result;
+    }
+
+    /** Онлайн-игроки, которые видят канал (используется в PAPI-плейсхолдерах). */
+    public int onlineInChannel(Channel channel) {
+        int count = 0;
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (canUse(online, channel)) count++;
+        }
+        return count;
     }
 
     public record Resolved(Channel channel, String message) {}

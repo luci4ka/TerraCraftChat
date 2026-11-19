@@ -4,7 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 
 import java.io.File;
@@ -15,10 +15,10 @@ import java.util.regex.Pattern;
 
 public class RuleManager {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private final List<Rule> rules = new ArrayList<>();
 
-    public RuleManager(JavaPlugin plugin) {
+    public RuleManager(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -97,7 +97,7 @@ public class RuleManager {
         plugin.getLogger().info("[Rule] " + rule.id() + " -> " + player.getName());
 
         // Аудит
-        var storage = ((TerraCraftChatPlugin) plugin).getStorageManager();
+        var storage = plugin.getStorageManager();
         if (storage != null) {
             storage.logRule(rule.id(), player.getUniqueId(), player.getName(),
                     rule.reason(), System.currentTimeMillis());

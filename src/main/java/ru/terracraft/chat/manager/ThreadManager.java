@@ -95,9 +95,9 @@ public class ThreadManager {
         var storage = plugin.getStorageManager();
         if (storage != null) {
             storage.saveThreadReply(
-                    reply.getId(), parentId,
-                    reply.getAuthorId(), reply.getAuthorName(),
-                    reply.getText(), reply.getTimestamp()
+                    reply.id(), parentId,
+                    reply.authorId(), reply.authorName(),
+                    reply.text(), reply.timestamp()
             );
         }
 

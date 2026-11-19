@@ -24,6 +24,7 @@ public class InvCommand {
         this.plugin = plugin;
     }
 
+    @SuppressWarnings("unchecked")
     public void register() {
         new CommandAPICommand("inv_show")
                 // /inv_show player <ник> — только админ
@@ -34,7 +35,7 @@ public class InvCommand {
                             List<PlayerProfile> profiles = (List<PlayerProfile>) args.get("target");
                             if (profiles == null || profiles.isEmpty()) return;
 
-                            UUID targetId = profiles.get(0).getUniqueId();
+                            UUID targetId = profiles.get(0).getId();
                             Player target = Bukkit.getPlayer(targetId);
                             if (target == null) {
                                 MessageUtil.sendPrefixed(sender, "chat.player-not-found");
@@ -66,7 +67,9 @@ public class InvCommand {
                         return;
                     }
 
-                    // Не инвалидируем — TTL 60 сек достаточно
+                    // Токен одноразовый: ссылку нельзя переслать и открыть повторно
+                    plugin.getInvTokenManager().invalidate(token);
+
                     openInventory(sender, target);
                 })
                 .register();

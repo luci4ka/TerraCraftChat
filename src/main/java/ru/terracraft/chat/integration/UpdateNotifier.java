@@ -1,16 +1,16 @@
 package ru.terracraft.chat.integration;
 
 import com.github.ezplugins.updater.UpdateChecker;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 
 public class UpdateNotifier {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
 
     private static final String GITHUB_OWNER = "luci4ka";
     private static final String GITHUB_REPO = "TerraCraftChat";
 
-    public UpdateNotifier(JavaPlugin plugin) {
+    public UpdateNotifier(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
     }
 

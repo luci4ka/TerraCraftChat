@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.storage.StorageManager;
+import ru.terracraft.chat.util.Tasks;
 
 import java.util.List;
 import java.util.Map;
@@ -11,20 +12,27 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Групповые чаты.
+ *
+ * <p>Все методы, обращающиеся к БД, синхронные, но предназначены для вызова
+ * внутри задач {@link Tasks#supply} — с main-потока они больше не дёргаются.
+ */
 public class GroupManager {
 
-    private static final long MEMBERS_CACHE_TTL_MS = 30_000L; // 30 сек
+    /** Кэш участников живёт 30 секунд, чтобы не читать БД на каждое сообщение. */
+    private static final long MEMBERS_CACHE_TTL_MS = 30_000L;
 
     private final TerraCraftChatPlugin plugin;
     private final StorageManager storage;
 
     private final Map<UUID, UUID> activeGroupByPlayer = new ConcurrentHashMap<>();
-
-    // Кэш участников: groupId → (memberIds, expiresAt)
     private final Map<UUID, CachedMembers> membersCache = new ConcurrentHashMap<>();
 
     private record CachedMembers(List<UUID> members, long expiresAt) {
-        boolean isValid() { return System.currentTimeMillis() < expiresAt; }
+        boolean valid() {
+            return System.currentTimeMillis() < expiresAt;
+        }
     }
 
     public GroupManager(TerraCraftChatPlugin plugin, StorageManager storage) {
@@ -32,9 +40,9 @@ public class GroupManager {
         this.storage = storage;
     }
 
-    public StorageManager.GroupRow getByName(String name) {
-        return storage.getGroupByName(name);
-    }
+    // ============================================================
+    //  АКТИВНАЯ ГРУППА
+    // ============================================================
 
     public void setActive(Player player, UUID groupId) {
         if (groupId == null) {
@@ -52,6 +60,10 @@ public class GroupManager {
         activeGroupByPlayer.remove(player.getUniqueId());
     }
 
+    // ============================================================
+    //  КЭШ
+    // ============================================================
+
     /** Сбрасывает кэш участников (вызывать при add/remove/delete). */
     public void invalidateCache(UUID groupId) {
         if (groupId != null) membersCache.remove(groupId);
@@ -61,44 +73,82 @@ public class GroupManager {
         membersCache.clear();
     }
 
-    /**
-     * Возвращает участников группы. Кэш 30 сек — чтобы не дёргать БД
-     * на каждое сообщение в группе.
-     */
-    private List<UUID> getMembersCached(UUID groupId) {
+    // ============================================================
+    //  БД (вызывать из Tasks.supply)
+    // ============================================================
+
+    public StorageManager.GroupRow findByName(String name) {
+        return storage.getGroupByName(name);
+    }
+
+    public UUID create(String name, Player owner) {
+        UUID groupId = storage.createGroup(name, owner.getUniqueId());
+        if (groupId == null) return null;
+        storage.addGroupMember(groupId, owner.getUniqueId());
+        invalidateCache(groupId);
+        return groupId;
+    }
+
+    public boolean addMember(UUID groupId, UUID memberId) {
+        boolean ok = storage.addGroupMember(groupId, memberId);
+        invalidateCache(groupId);
+        return ok;
+    }
+
+    public boolean removeMember(UUID groupId, UUID memberId) {
+        boolean ok = storage.removeGroupMember(groupId, memberId);
+        invalidateCache(groupId);
+        return ok;
+    }
+
+    public void delete(UUID groupId) {
+        storage.deleteGroup(groupId);
+        invalidateCache(groupId);
+    }
+
+    /** Участники группы с кэшем 30 секунд. */
+    public List<UUID> members(UUID groupId) {
         CachedMembers cached = membersCache.get(groupId);
-        if (cached != null && cached.isValid()) {
+        if (cached != null && cached.valid()) {
             return cached.members();
         }
-        List<UUID> fresh = storage.getGroupMembers(groupId);
+
+        List<UUID> fresh = List.copyOf(storage.getGroupMembers(groupId));
         membersCache.put(groupId, new CachedMembers(
-                List.copyOf(fresh),
+                fresh,
                 System.currentTimeMillis() + MEMBERS_CACHE_TTL_MS
         ));
         return fresh;
     }
 
+    /**
+     * Отправляет сообщение в группу. Вызывать из async-задачи;
+     * рассылка сама вернётся в main-поток.
+     *
+     * @return {@code false}, если отправитель не участник группы
+     */
     public boolean sendToGroup(Player sender, StorageManager.GroupRow group, String message) {
-        List<UUID> members = getMembersCached(group.id());
+        List<UUID> members = members(group.id());
 
         if (!members.contains(sender.getUniqueId())) {
             return false;
         }
 
-        UUID msgId = UUID.randomUUID();
-        long now = System.currentTimeMillis();
-        storage.saveGroupMessage(msgId, group.id(), sender.getUniqueId(),
-                sender.getName(), message, now);
+        UUID messageId = UUID.randomUUID();
+        storage.saveGroupMessage(messageId, group.id(), sender.getUniqueId(),
+                sender.getName(), message, System.currentTimeMillis());
 
-        for (UUID memberId : members) {
-            Player viewer = Bukkit.getPlayer(memberId);
-            if (viewer == null || !viewer.isOnline()) continue;
-            if (plugin.getIgnoreManager().isIgnoring(viewer, sender)) continue;
+        Tasks.sync(plugin, () -> {
+            for (UUID memberId : members) {
+                Player viewer = Bukkit.getPlayer(memberId);
+                if (viewer == null || !viewer.isOnline()) continue;
+                if (plugin.getIgnoreManager().isIgnoring(viewer, sender)) continue;
 
-            var formatted = plugin.getChatFormatter().formatGroupMessage(
-                    sender, group.name(), message, viewer);
-            viewer.sendMessage(formatted);
-        }
+                viewer.sendMessage(plugin.getChatFormatter().formatGroupMessage(
+                        sender, group.name(), message, viewer));
+            }
+        });
+
         return true;
     }
 

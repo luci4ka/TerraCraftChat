@@ -2,7 +2,7 @@ package ru.terracraft.chat.game;
 
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -11,10 +11,10 @@ import java.util.Locale;
 
 public class GamesConfig {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private final List<GameDefinition> games = new ArrayList<>();
 
-    public GamesConfig(JavaPlugin plugin) {
+    public GamesConfig(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
     }
 

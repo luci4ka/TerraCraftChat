@@ -12,12 +12,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+/**
+ * Перерисовка чата после удаления сообщения (приём «сдвига строк», как в Allium).
+ */
 public class ChatRedrawManager {
+
+    private static final int BATCH_SIZE = 20;
 
     private final TerraCraftChatPlugin plugin;
     private final ChatFormatter formatter;
-
-    private static final int BATCH_SIZE = 20;
 
     public ChatRedrawManager(TerraCraftChatPlugin plugin, ChatFormatter formatter) {
         this.plugin = plugin;
@@ -48,47 +51,49 @@ public class ChatRedrawManager {
         List<ChatMessage> history = plugin.getChatMessageRegistry()
                 .getHistoryFor(viewer.getUniqueId());
 
-        for (ChatMessage m : history) {
-            if (m.getId().equals(removedId)) continue;
+        ChannelManager channels = plugin.getChannelManager();
 
-            Player sender = Bukkit.getPlayer(m.getSenderUuid());
-            String senderName = sender != null ? sender.getName() : m.getSenderName();
+        for (ChatMessage message : history) {
+            if (message.getId().equals(removedId)) continue;
 
-            Channel channel = null;
-            if (m.getChannelId() != null) {
-                channel = plugin.getChannelManager().get(m.getChannelId());
-            }
+            Player sender = Bukkit.getPlayer(message.getSenderUuid());
+            String senderName = sender != null ? sender.getName() : message.getSenderName();
+
+            Channel channel = message.getChannelId() != null
+                    ? channels.get(message.getChannelId())
+                    : null;
             if (channel == null) {
-                channel = plugin.getChannelManager().getDefault();
+                channel = channels.getDefault();
             }
+
+            // Сообщение канала, к которому у зрителя больше нет доступа,
+            // перерисовывать не нужно
+            if (channel != null && !channels.canUse(viewer, channel)) continue;
 
             Component formatted;
-            if (channel != null) {
-                String format = plugin.getChatConfig().formats().byKey(channel.formatKey());
-                if (sender != null) {
-                    formatted = formatter.formatChannel(
-                            sender, m.getRawMessage(), viewer, format, m.getId());
-                } else {
-                    formatted = Component.text("[" + channel.id().toUpperCase(Locale.ROOT) + "] ")
-                            .append(Component.text(senderName + ": " + m.getRawMessage()));
-                }
+            if (channel != null && sender != null) {
+                formatted = formatter.formatChannel(
+                        sender,
+                        message.getRawMessage(),
+                        viewer,
+                        formatter.envelope(sender, channel.formatKey()),
+                        message.getId()
+                );
             } else {
-                formatted = Component.text(senderName + ": " + m.getRawMessage());
+                String prefix = channel != null
+                        ? "[" + channel.id().toUpperCase(Locale.ROOT) + "] "
+                        : "";
+                formatted = Component.text(prefix + senderName + ": " + message.getRawMessage());
             }
 
             viewer.sendMessage(formatted);
 
-            // === Thread replies ===
-            List<ChatMessage.ThreadReply> thread = m.getThread();
-            if (!thread.isEmpty()) {
-                for (ChatMessage.ThreadReply reply : thread) {
-                    // Пропускаем replies, если отправитель игнорируется viewer'ом
-                    if (plugin.getIgnoreManager().isIgnoring(viewer.getUniqueId(), reply.getAuthorId())) {
-                        continue;
-                    }
-                    Component replyComp = formatter.formatThreadReply(m, reply);
-                    viewer.sendMessage(replyComp);
+            // === Ответы в треде ===
+            for (ChatMessage.ThreadReply reply : message.getThread()) {
+                if (plugin.getIgnoreManager().isIgnoring(viewer.getUniqueId(), reply.authorId())) {
+                    continue;
                 }
+                viewer.sendMessage(formatter.formatThreadReply(message, reply));
             }
         }
     }

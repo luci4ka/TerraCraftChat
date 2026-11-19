@@ -5,7 +5,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.config.ChatConfig;
 
@@ -18,7 +18,7 @@ public class AutoBroadcast {
 
     private static final String KEY_PREFIX = "@key:";
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private ChatConfig config;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
@@ -31,7 +31,7 @@ public class AutoBroadcast {
     private final List<String> queue = new ArrayList<>();
     private int taskId = -1;
 
-    public AutoBroadcast(JavaPlugin plugin, ChatConfig config) {
+    public AutoBroadcast(TerraCraftChatPlugin plugin, ChatConfig config) {
         this.plugin = plugin;
         this.config = config;
     }
@@ -87,8 +87,8 @@ public class AutoBroadcast {
             player.sendMessage(message);
         }
 
-        if (plugin instanceof TerraCraftChatPlugin tcc && tcc.getChatLogger() != null) {
-            tcc.getChatLogger().log("AUTOBROADCAST", "CONSOLE", null, raw);
+        if (plugin.getChatLogger() != null) {
+            plugin.getChatLogger().log("AUTOBROADCAST", "CONSOLE", null, raw);
         }
     }
 

@@ -4,10 +4,9 @@ plugins {
 }
 
 group = 'ru.terracraft'
-version = '1.1.1'
+version = '1.2.0'
 
 repositories {
-
     mavenCentral()
     maven { url = 'https://repo.papermc.io/repository/maven-public/' }
     maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
@@ -17,23 +16,57 @@ repositories {
     maven { url = 'https://repo.codemc.org/repository/maven-public/' }
 }
 
+// ============================================================
+//  ВЕРСИИ — фиксируем, чтобы сборки были воспроизводимыми
+// ============================================================
+
+ext {
+    paperApiVersion = '26.3.build.253-stable'
+    // MockBukkit собирается под конкретную версию игры: берём ту, для которой
+    // есть релиз, и жёстко фиксируем её только для тестового classpath.
+    mockBukkitVersion = '4.117.0'
+    mockBukkitPaperApiVersion = '26.2.build.1267-stable'
+    commandApiVersion = '12.1.0'
+    skinsRestorerVersion = '15.12.6'
+    placeholderApiVersion = '2.12.3'
+    mineSqlVersion = '1.4.2'
+    easySqlVersion = '0.4.7'
+    configLibVersion = '4.8.1'
+    bstatsVersion = '3.2.1'
+    junitVersion = '6.1.3'
+}
+
 dependencies {
     // ==================== PAPER ====================
-    compileOnly 'io.papermc.paper:paper-api:26.2.build.+'
+    compileOnly "io.papermc.paper:paper-api:${paperApiVersion}"
 
-    compileOnly 'net.skinsrestorer:skinsrestorer-api:15.12.6'
-    compileOnly "cc.carm.plugin:minesql-api:1.4.2"
-    compileOnly("dev.jorel:commandapi-paper-core:12.1.0")
-    compileOnly 'cc.carm.lib:easysql-api:0.4.7'
-    compileOnly 'me.clip:placeholderapi:2.12.3'
+    compileOnly "net.skinsrestorer:skinsrestorer-api:${skinsRestorerVersion}"
+    compileOnly "cc.carm.plugin:minesql-api:${mineSqlVersion}"
+    compileOnly "dev.jorel:commandapi-paper-core:${commandApiVersion}"
+    compileOnly "cc.carm.lib:easysql-api:${easySqlVersion}"
+    compileOnly "me.clip:placeholderapi:${placeholderApiVersion}"
 
+    implementation "org.bstats:bstats-bukkit:${bstatsVersion}"
+    implementation "de.exlll:configlib-yaml:${configLibVersion}"
+    implementation 'com.github.ez-plugins:mc-plugin-update-notifier:1.0.0'
 
-    implementation("org.bstats:bstats-bukkit:3.2.1")
-    implementation("de.exlll:configlib-yaml:4.8.1")
-    implementation('com.github.ez-plugins:mc-plugin-update-notifier:1.0.0')
+    // ==================== TESTS ====================
+    testImplementation "io.papermc.paper:paper-api:${mockBukkitPaperApiVersion}"
+    testImplementation "net.skinsrestorer:skinsrestorer-api:${skinsRestorerVersion}"
+    testImplementation "de.exlll:configlib-yaml:${configLibVersion}"
+    testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
+    testImplementation "org.mockbukkit.mockbukkit:mockbukkit-v26.2:${mockBukkitVersion}"
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Тестовый classpath должен использовать ту же версию Paper API, что и MockBukkit,
+// иначе MockBukkit падает на несовпадении данных реестров.
+configurations.matching { it.name.toLowerCase().contains('test') }.configureEach {
+    resolutionStrategy.force "io.papermc.paper:paper-api:${mockBukkitPaperApiVersion}"
 }
 
 def targetJavaVersion = 25
+
 java {
     def javaVersion = JavaVersion.toVersion(targetJavaVersion)
     sourceCompatibility = javaVersion
@@ -45,10 +78,29 @@ java {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.release.set(targetJavaVersion)
+    options.compilerArgs += ['-Xlint:all', '-Xlint:-serial', '-Xlint:-processing']
+}
 
-    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
-        options.release.set(targetJavaVersion)
+// ============================================================
+//  TESTS (JUnit 5 / Jupiter 6, Java 25)
+// ============================================================
+
+tasks.named('test') {
+    useJUnitPlatform()
+
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat = 'full'
+        showStandardStreams = false
     }
+
+    // Locale-тесты читают src/main/resources — держим предсказуемый workdir
+    workingDir = projectDir
+    systemProperty 'file.encoding', 'UTF-8'
+
+    maxParallelForks = 1
+    jvmArgs += ['-XX:+EnableDynamicAgentLoading', '-Xshare:off']
 }
 
 processResources {

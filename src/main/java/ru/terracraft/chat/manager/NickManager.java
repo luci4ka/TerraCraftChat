@@ -2,27 +2,53 @@ package ru.terracraft.chat.manager;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.format.NickFormat;
 import ru.terracraft.chat.storage.StorageManager;
+import ru.terracraft.chat.util.Tasks;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Ники игроков.
+ *
+ * <p>Загрузка из БД асинхронная: раньше {@code SELECT} выполнялся прямо в
+ * {@code PlayerJoinEvent}, то есть в main-потоке — на большой таблице это
+ * фриз на входе игрока.
+ */
 public class NickManager {
+
+    private final TerraCraftChatPlugin plugin;
     private final StorageManager storage;
     private final Map<UUID, String> cache = new ConcurrentHashMap<>();
 
-    public NickManager(JavaPlugin plugin, StorageManager storage) {
+    public NickManager(TerraCraftChatPlugin plugin, StorageManager storage) {
+        this.plugin = plugin;
         this.storage = storage;
     }
 
+    /** Асинхронно подгружает ник и обновляет displayName в main-потоке. */
     public void load(Player player) {
-        String nick = storage.getNick(player.getUniqueId());
-        if (nick != null && !nick.isEmpty()) {
-            cache.put(player.getUniqueId(), nick);
+        UUID uuid = player.getUniqueId();
+
+        String cached = cache.get(uuid);
+        if (cached != null) {
+            updateDisplayName(player);
+            return;
         }
+
+        if (!storage.isAvailable()) return;
+
+        Tasks.supply(plugin, "nick/" + player.getName(), () -> storage.getNick(uuid))
+                .thenAccept(nick -> {
+                    if (nick == null || nick.isEmpty()) return;
+                    cache.put(uuid, nick);
+                    Tasks.sync(plugin, () -> {
+                        if (player.isOnline()) updateDisplayName(player);
+                    });
+                });
     }
 
     public void setNick(Player player, String nick) {

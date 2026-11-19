@@ -3,7 +3,7 @@ package ru.terracraft.chat.integration;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.config.ChatConfig;
 
 import java.util.LinkedHashMap;
@@ -12,9 +12,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
-public class LocalAnswerManager {
+public final class LocalAnswerManager {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private ChatConfig config;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
@@ -24,7 +24,7 @@ public class LocalAnswerManager {
     // Кулдаун: последний ответ бота (global)
     private final AtomicLong lastAnswerAt = new AtomicLong(0);
 
-    public LocalAnswerManager(JavaPlugin plugin, ChatConfig config) {
+    public LocalAnswerManager(TerraCraftChatPlugin plugin, ChatConfig config) {
         this.plugin = plugin;
         this.config = config;
         compile();

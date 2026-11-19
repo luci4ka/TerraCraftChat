@@ -237,6 +237,14 @@ public final class ChatConfig {
         @Comment("Показывать голову игрока в чате")
         private boolean showPlayerHeads = true;
 
+        @Comment({
+                "Рисовать голову как «шапку» (объёмный наклон).",
+                "false — плоская голова, как аватар.",
+                "Скин берётся из SkinsRestorer, если он есть на сервере,",
+                "иначе — по UUID игрока."
+        })
+        private boolean headAsHat = false;
+
         @Comment("Разрешить [item] в сообщениях")
         private boolean itemPlaceholderEnabled = true;
 
@@ -258,6 +266,7 @@ public final class ChatConfig {
         public boolean headDisplayEnabled() { return headDisplayEnabled; }
         public int headDisplayDuration() { return headDisplayDuration; }
         public boolean showPlayerHeads() { return showPlayerHeads; }
+        public boolean headAsHat() { return headAsHat; }
         public boolean itemPlaceholderEnabled() { return itemPlaceholderEnabled; }
         public boolean invPlaceholderEnabled() { return invPlaceholderEnabled; }
         public int maxItemPlaceholders() { return maxItemPlaceholders; }

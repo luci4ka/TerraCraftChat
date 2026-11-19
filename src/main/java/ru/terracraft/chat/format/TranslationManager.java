@@ -5,7 +5,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.translation.MiniMessageTranslator;
 import net.kyori.adventure.translation.GlobalTranslator;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 
 import java.io.File;
 import java.io.InputStreamReader;
@@ -17,12 +17,12 @@ import java.util.Map;
 
 public class TranslationManager {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private final Map<Locale, Map<String, String>> translations = new HashMap<>();
     private MiniMessageTranslator currentTranslator;
     private int localeCount = 0;
 
-    public TranslationManager(JavaPlugin plugin) {
+    public TranslationManager(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
     }
 

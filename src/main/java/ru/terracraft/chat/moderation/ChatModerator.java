@@ -1,7 +1,7 @@
 package ru.terracraft.chat.moderation;
 
-import ru.terracraft.chat.util.LevenshteinUtil;
 import ru.terracraft.chat.config.ChatConfig;
+import ru.terracraft.chat.util.LevenshteinUtil;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -15,6 +15,9 @@ import java.util.regex.Pattern;
 
 public class ChatModerator {
 
+    /** Максимальная длина строки, для которой считаем схожесть (защита от O(n²) на «простынях»). */
+    private static final int SIMILARITY_MAX_LENGTH = 256;
+
     private volatile ChatConfig config;
     private volatile String swearReplacement;
 
@@ -22,8 +25,9 @@ public class ChatModerator {
     private final Map<UUID, Long> lastMessageTime = new ConcurrentHashMap<>();
     private final Map<UUID, String> lastMessage = new ConcurrentHashMap<>();
 
-    // volatile: reload подменяет список целиком, check() видит либо старый, либо новый
+    // volatile: reload подменяет списки целиком, check() видит либо старые, либо новые
     private volatile List<Pattern> swearPatterns = List.of();
+    private volatile List<Pattern> allowedDomainPatterns = List.of();
 
     // ===== Regex =====
     private static final Pattern IP_PATTERN = Pattern.compile(
@@ -38,10 +42,12 @@ public class ChatModerator {
             Pattern.CASE_INSENSITIVE
     );
 
+    /** Разделители внутри слова, которые допускаются в матерных паттернах. */
+    private static final String GAP = "[\\s._*\\-]{0,3}";
+
     public ChatModerator(ChatConfig config) {
         this.config = config;
-        this.swearReplacement = config.moderation().swearReplacement();
-        compileSwearPatterns();
+        compilePatterns(config);
     }
 
     /**
@@ -50,113 +56,136 @@ public class ChatModerator {
      */
     public void reload(ChatConfig newConfig) {
         this.config = newConfig;
-        this.swearReplacement = newConfig.moderation().swearReplacement();
-        compileSwearPatterns();
+        compilePatterns(newConfig);
         // lastMessageTime/lastMessage НЕ трогаем — защита от обхода cooldown
     }
 
-    private void compileSwearPatterns() {
-        List<Pattern> list = new ArrayList<>();
-        for (String word : config.moderation().swearWords()) {
+    private void compilePatterns(ChatConfig source) {
+        this.swearReplacement = source.moderation().swearReplacement();
+
+        List<Pattern> swear = new ArrayList<>();
+        for (String word : source.moderation().swearWords()) {
             if (word == null) continue;
             String trimmed = word.trim().toLowerCase(Locale.ROOT);
             if (trimmed.isEmpty()) continue;
 
             try {
-                list.add(Pattern.compile(
-                        "(?<![\\p{L}])" + Pattern.quote(trimmed) + "(?![\\p{L}])",
+                swear.add(Pattern.compile(
+                        "(?<![\\p{L}])" + gapTolerant(trimmed) + "(?![\\p{L}])",
                         Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
                 ));
             } catch (Exception ex) {
                 // пропускаем битые паттерны
             }
         }
-        // Атомарная подмена — читатели видят либо старый, либо новый список
-        this.swearPatterns = List.copyOf(list);
+        this.swearPatterns = List.copyOf(swear);
+
+        // Белый список доменов компилируем один раз, а не на каждое сообщение
+        List<Pattern> allowed = new ArrayList<>();
+        for (String domain : source.moderation().allowedDomains()) {
+            if (domain == null || domain.isBlank()) continue;
+            try {
+                allowed.add(Pattern.compile(
+                        "(?<![\\w.\\-])" + Pattern.quote(domain.trim().toLowerCase(Locale.ROOT))
+                                + "(?![\\w.\\-])"
+                ));
+            } catch (Exception ex) {
+                // пропускаем битые паттерны
+            }
+        }
+        this.allowedDomainPatterns = List.copyOf(allowed);
     }
 
-    // ===== Результат =====
+    /**
+     * Собирает regex, который находит слово даже с разделителями между буквами:
+     * «сука», «с у к а», «с.у.к.а» — всё считается матом.
+     * Раньше для этого из текста удалялись все пробелы между буквами, из-за чего
+     * «ты сука» превращалось в «тысука» и фильтр перестарался — слово с нормальным
+     * пробелом перед ним больше не находилось.
+     */
+    private static String gapTolerant(String word) {
+        StringBuilder sb = new StringBuilder(word.length() * 8);
+        for (int i = 0; i < word.length(); i++) {
+            if (i > 0) sb.append(GAP);
+            sb.append(Pattern.quote(String.valueOf(word.charAt(i))));
+        }
+        return sb.toString();
+    }
+
+    // ============================================================
+    //  РЕЗУЛЬТАТ ПРОВЕРКИ
+    // ============================================================
 
     public enum Result {
         OK, COOLDOWN, DUPLICATE, SIMILAR, FLOOD,
         SWEAR, SWEAR_BLOCK, ADVERTISEMENT, CRASH
     }
 
-    public static class CheckResult {
-        private final Result result;
-        private final String message;
-        private final long cooldownRemaining;
+    /**
+     * Итог проверки сообщения — sealed-иерархия вместо «enum + флаги»:
+     * компилятор требует обработать все ветки (см. ChatListener).
+     */
+    public sealed interface Outcome {
 
-        public CheckResult(Result result, String message, long cooldownRemaining) {
-            this.result = result;
-            this.message = message;
-            this.cooldownRemaining = cooldownRemaining;
-        }
+        /** Сообщение можно рассылать как есть. */
+        record Allowed(String message) implements Outcome {}
 
-        public Result result() { return result; }
-        public String message() { return message; }
-        public long cooldownRemaining() { return cooldownRemaining; }
+        /** Сообщение рассылается, но с заменённым матом. */
+        record Censored(String message) implements Outcome {}
 
-        public boolean isBlocked() {
-            return result != Result.OK && result != Result.SWEAR;
-        }
+        /** Сообщение блокируется. */
+        record Blocked(Result reason, long cooldownRemaining) implements Outcome {}
     }
 
-    public static final class Bypass {
-        public final boolean ads, swear, levenshtein, flood, crash, cooldown, duplicate;
+    public record Bypass(boolean ads, boolean swear, boolean levenshtein,
+                         boolean flood, boolean crash, boolean cooldown,
+                         boolean duplicate) {}
 
-        public Bypass(boolean ads, boolean swear, boolean levenshtein,
-                      boolean flood, boolean crash, boolean cooldown, boolean duplicate) {
-            this.ads = ads;
-            this.swear = swear;
-            this.levenshtein = levenshtein;
-            this.flood = flood;
-            this.crash = crash;
-            this.cooldown = cooldown;
-            this.duplicate = duplicate;
-        }
-    }
+    // ============================================================
+    //  ОСНОВНАЯ ПРОВЕРКА
+    // ============================================================
 
-    // ===== Основная проверка =====
-
-    public CheckResult check(UUID senderId, String message, Bypass bypass) {
+    public Outcome check(UUID senderId, String message, Bypass bypass) {
         ChatConfig.ModerationSection mod = config.moderation();
 
-        if (!bypass.crash && mod.antiCrashEnabled() && containsCrashChars(message)) {
-            return new CheckResult(Result.CRASH, message, 0);
+        if (!bypass.crash() && mod.antiCrashEnabled() && containsCrashChars(message)) {
+            return new Outcome.Blocked(Result.CRASH, 0);
         }
 
-        if (!bypass.ads && isAdvertisement(message)) {
-            return new CheckResult(Result.ADVERTISEMENT, message, 0);
+        if (!bypass.ads() && isAdvertisement(message)) {
+            return new Outcome.Blocked(Result.ADVERTISEMENT, 0);
         }
 
         int cooldown = mod.cooldown();
-        if (cooldown > 0 && !bypass.cooldown) {
+        if (cooldown > 0 && !bypass.cooldown()) {
             long now = System.currentTimeMillis();
             long last = lastMessageTime.getOrDefault(senderId, 0L);
             long elapsed = (now - last) / 1000;
             if (elapsed < cooldown) {
-                return new CheckResult(Result.COOLDOWN, message, cooldown - elapsed);
+                return new Outcome.Blocked(Result.COOLDOWN, cooldown - elapsed);
             }
         }
 
         String previous = lastMessage.get(senderId);
-        if (mod.antiDuplicate() && !bypass.duplicate
+        if (mod.antiDuplicate() && !bypass.duplicate()
                 && previous != null && previous.equalsIgnoreCase(message)) {
-            return new CheckResult(Result.DUPLICATE, message, 0);
+            return new Outcome.Blocked(Result.DUPLICATE, 0);
         }
 
-        if (mod.levenshteinEnabled() && !bypass.levenshtein
-                && previous != null && message.length() >= mod.levenshteinMinLength()) {
-            double sim = LevenshteinUtil.similarity(previous, message);
-            if (sim >= mod.levenshteinThreshold()) {
-                return new CheckResult(Result.SIMILAR, message, 0);
+        if (mod.levenshteinEnabled() && !bypass.levenshtein()
+                && previous != null
+                && message.length() >= mod.levenshteinMinLength()
+                && message.length() <= SIMILARITY_MAX_LENGTH
+                && previous.length() <= SIMILARITY_MAX_LENGTH) {
+            double similarity = LevenshteinUtil.similarity(previous, message);
+            if (similarity >= mod.levenshteinThreshold()) {
+                return new Outcome.Blocked(Result.SIMILAR, 0);
             }
         }
 
-        if (mod.maxRepeatingChars() > 0 && !bypass.flood) {
+        if (mod.maxRepeatingChars() > 0 && !bypass.flood()) {
             if (findMaxRepeating(message) > mod.maxRepeatingChars()) {
-                return new CheckResult(Result.FLOOD, message, 0);
+                return new Outcome.Blocked(Result.FLOOD, 0);
             }
         }
 
@@ -166,20 +195,26 @@ public class ChatModerator {
         }
 
         // ===== Маты =====
-        if (mod.swearFilterEnabled() && !bypass.swear) {
+        if (mod.swearFilterEnabled() && !bypass.swear()) {
+            // 1) прямое совпадение (в т.ч. с разделителями между буквами)
+            int swearCount = countSwear(processed);
+
+            // 2) с заменой гомоглифов (лат. c → рус. с) и NFKC-нормализацией
             String normalized = normalizeForSwear(processed);
-            int swearCount = countSwear(normalized);
+            if (!normalized.equals(processed.toLowerCase(Locale.ROOT))) {
+                swearCount = Math.max(swearCount, countSwear(normalized));
+            }
 
             if (swearCount == 0) {
-                return new CheckResult(Result.OK, processed, 0);
+                return new Outcome.Allowed(processed);
             }
 
             if (swearCount > mod.maxSwearWords()) {
-                return new CheckResult(Result.SWEAR_BLOCK, processed, 0);
+                return new Outcome.Blocked(Result.SWEAR_BLOCK, 0);
             }
 
             if (!mod.swearReplaceInsteadOfBlock()) {
-                return new CheckResult(Result.SWEAR_BLOCK, processed, 0);
+                return new Outcome.Blocked(Result.SWEAR_BLOCK, 0);
             }
 
             String censored = censorSwear(processed);
@@ -187,13 +222,15 @@ public class ChatModerator {
             if (censored.equals(processed)) {
                 censored = censorSwear(normalized);
             }
-            return new CheckResult(Result.SWEAR, censored, 0);
+            return new Outcome.Censored(censored);
         }
 
-        return new CheckResult(Result.OK, processed, 0);
+        return new Outcome.Allowed(processed);
     }
 
-    // ===== Запись состояния =====
+    // ============================================================
+    //  ЗАПИСЬ СОСТОЯНИЯ
+    // ============================================================
 
     public void record(UUID senderId, String message) {
         lastMessageTime.put(senderId, System.currentTimeMillis());
@@ -205,16 +242,16 @@ public class ChatModerator {
         lastMessage.remove(senderId);
     }
 
-    // ===== Нормализация =====
+    // ============================================================
+    //  НОРМАЛИЗАЦИЯ
+    // ============================================================
 
+    /** «х у й» / «х.у.й» ловятся самими паттернами — здесь только NFKC + гомоглифы. */
     private String normalizeForSwear(String message) {
         String s = Normalizer.normalize(message, Normalizer.Form.NFKC)
                 .toLowerCase(Locale.ROOT);
 
-        // Убираем пробелы и пунктуацию между буквами: "х у й" → "хуй"
-        s = s.replaceAll("(?<=\\p{L})[\\s._*\\-]+(?=\\p{L})", "");
-
-        // Замена латинских омоглифов на кириллицу
+        // Замена латинских омоглифов на кириллицу (длина строки не меняется)
         s = s.replace('a', 'а').replace('e', 'е').replace('o', 'о')
                 .replace('p', 'р').replace('c', 'с').replace('x', 'х')
                 .replace('y', 'у').replace('k', 'к').replace('m', 'м')
@@ -223,7 +260,9 @@ public class ChatModerator {
         return s;
     }
 
-    // ===== Маты =====
+    // ============================================================
+    //  МАТЫ
+    // ============================================================
 
     private int countSwear(String normalized) {
         int count = 0;
@@ -249,11 +288,14 @@ public class ChatModerator {
         return result;
     }
 
-    // ===== Anti-flood =====
+    // ============================================================
+    //  ANTI-FLOOD
+    // ============================================================
 
     private int findMaxRepeating(String message) {
         if (message.isEmpty()) return 0;
-        int max = 1, current = 1;
+        int max = 1;
+        int current = 1;
         for (int i = 1; i < message.length(); i++) {
             if (message.charAt(i) == message.charAt(i - 1)) {
                 max = Math.max(max, ++current);
@@ -264,7 +306,9 @@ public class ChatModerator {
         return max;
     }
 
-    // ===== Anti-crash =====
+    // ============================================================
+    //  ANTI-CRASH
+    // ============================================================
 
     private boolean containsCrashChars(String message) {
         for (int i = 0; i < message.length(); i++) {
@@ -275,10 +319,13 @@ public class ChatModerator {
         return false;
     }
 
-    // ===== Анти-капс =====
+    // ============================================================
+    //  АНТИ-КАПС
+    // ============================================================
 
     private String applyAntiCaps(String message) {
-        int letters = 0, uppercase = 0;
+        int letters = 0;
+        int uppercase = 0;
         for (char c : message.toCharArray()) {
             if (Character.isLetter(c)) {
                 letters++;
@@ -292,7 +339,9 @@ public class ChatModerator {
         return message;
     }
 
-    // ===== Анти-реклама =====
+    // ============================================================
+    //  АНТИ-РЕКЛАМА
+    // ============================================================
 
     private boolean isAdvertisement(String message) {
         if (isWhitelisted(message)) return false;
@@ -308,12 +357,9 @@ public class ChatModerator {
 
     private boolean isWhitelisted(String message) {
         String lower = message.toLowerCase(Locale.ROOT);
-        for (String allowed : config.moderation().allowedDomains()) {
-            String a = allowed.toLowerCase(Locale.ROOT);
-            Pattern p = Pattern.compile(
-                    "(?<![\\w.\\-])" + Pattern.quote(a) + "(?![\\w.\\-])"
-            );
-            Matcher m = p.matcher(lower);
+
+        for (Pattern pattern : allowedDomainPatterns) {
+            Matcher m = pattern.matcher(lower);
             if (!m.find()) continue;
 
             String remainder = m.replaceAll(" ");

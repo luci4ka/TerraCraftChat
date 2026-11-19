@@ -41,7 +41,7 @@
 
 **Версии:**
 - Плагин: 1.0.0
-- Paper: 1.21.11-XXX
+- Paper: 26.3-XXX
 - Java: 21
 - CommandAPI: 12.1.0
 - PlaceholderAPI: 2.12.3 (опционально)
@@ -79,7 +79,7 @@
 
 | Компонент | Версия |
 |---|---|
-| **JDK** | 21+ (Paper 1.21.11 требует 21) |
+| **JDK** | 25+ (Paper 26.3 требует 25) |
 | **Gradle** | 9.1.0+ (или wrapper) |
 | **Git** | любой |
 
@@ -112,7 +112,7 @@ git config core.eol lf
 
 4. **Установи на тестовый сервер**
 
-Скачай Paper 1.21.11 и положи в `run/paper.jar`, затем:
+Скачай Paper 26.3 и положи в `run/paper.jar`, затем:
 
 ```bash
 ./gradlew runServer
@@ -246,7 +246,7 @@ ls build/libs/
 - [ ] Код компилируется без ошибок
 - [ ] Нет warnings от компилятора (или минимум)
 - [ ] JAR собирается в `build/libs/Chat-1.0.0.jar`
-- [ ] Протестировано на Paper 1.21.11 + CommandAPI 12.1.0
+- [ ] Протестировано на Paper 26.3 + CommandAPI 12.1.0
 - [ ] Нет хардкода языка (всё в `messages_*.yml`)
 - [ ] Нет `Player`-вызовов из async-потока
 - [ ] `Locale.ROOT` в `toLowerCase`/`toUpperCase`
@@ -272,7 +272,7 @@ Closes #123
 
 ## Как тестировал
 1. Собрал JAR
-2. Запустил на Paper 1.21.11 + CommandAPI 12.1.0
+2. Запустил на Paper 26.3 + CommandAPI 12.1.0
 3. Проверил /trade, /tc, /tr
 
 ## Скриншоты

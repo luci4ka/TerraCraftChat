@@ -3,9 +3,9 @@
 
 # TerraCraftChat
 
-**Современный чат-плагин для Paper 1.21.11**
+**Современный чат-плагин для Paper 26.3**
 
-[![Paper](https://img.shields.io/badge/Paper-1.21.11-blue?style=for-the-badge)](https://papermc.io/)
+[![Paper](https://img.shields.io/badge/Paper-26.3-blue?style=for-the-badge)](https://papermc.io/)
 [![Java](https://img.shields.io/badge/Java-25+-orange?style=for-the-badge)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
@@ -29,7 +29,7 @@
 
 ### 🎨 Оформление
 - **MiniMessage** в форматах — цвета, градиенты, hover, click
-- **Головы игроков** в чате через SkinsRestorer (`<head:uuid:...>`)
+- **Головы игроков** в чате — через SkinsRestorer (берётся свойство `textures`, поэтому работает и в offline-mode), а без него — по UUID игрока. Плейсхолдер в формате: `<sender_head>`
 - **Спрайты предметов** и блоков (`<sprite:items:item/diamond>`)
 - **Кастомные эмодзи** (`:smile:`, `:heart:`, `:diamond:`)
 - **Показ предмета из руки** `[item]` с тултипом (лимит на сообщение)
@@ -84,12 +84,12 @@
 
 | Компонент | Версия |
 |---|---|
-| **Paper (или форк)** | 1.21.11+ |
-| **Java** | 21+ |
+| **Paper (или форк)** | 26.3+ |
+| **Java** | 25+ |
 | **CommandAPI** | 12.1.0+ (обязательно) |
-| **MineSQL** | 1.4.2+ (обязательно) |
-| **PlaceholderAPI** | 2.11.6+ (рекомендуется) |
-| **SkinsRestorer** | 15.9.0+ (опционально) |
+| **MineSQL** | 1.4.2+ (обязательно для истории/игноров/статистики) |
+| **PlaceholderAPI** | 2.12.3+ (опционально) |
+| **SkinsRestorer** | 15.12.6+ (опционально — головы игроков) |
 
 ### Шаги
 
@@ -173,6 +173,9 @@ databases:
 ---
 
 ## 🔑 Права
+
+Все права объявлены в `paper-plugin.yml` (секция `permissions:`) — их видно в LuckPerms и `/permissions` сразу после старта.
+Если сервер по какой-то причине не читает эту секцию, плагин регистрирует все права в рантайме при запуске.
 
 ### Основные
 | Право | По умолчанию | Описание |
@@ -372,7 +375,7 @@ games:
 | `%terracraftchat_threads_enabled%` | `true`/`false` (серверный) |
 | `%terracraftchat_games_count%` | Кол-во игр (серверный) |
 
-⚠️ Плейсхолдеры `stats_*` кэшируются на 10 секунд для производительности.
+⚠️ Плейсхолдеры `stats_*` кэшируются на 10 секунд и обновляются в фоне — главный поток сервера не ждёт БД.
 
 ---
 
@@ -385,20 +388,28 @@ games:
 ```bash
 git clone https://github.com/luci4ka/TerraCraftChat.git
 cd TerraCraftChat
-./gradlew clean build
+./gradlew clean build     # сборка + тесты
+./gradlew test            # только тесты
 ```
 
-Готовый JAR будет в `build/libs/`.
+Готовый JAR будет в `build/libs/TerraCraftChat-<версия>.jar`.
+
+### Тесты
+
+В проекте 16 тест-классов (112 тестов) на JUnit 5 (Jupiter 6) + MockBukkit: модерация
+(мат/реклама/спам/кулдаун), модели, каналы, головы игроков, форматы по умолчанию,
+аудит ключей локализации. Отчёт после прогона — `build/reports/tests/test/index.html`.
 
 ---
 
 ## 🐛 Известные проблемы
 
-- **SkinsRestorer** — только 15.9.0+
+- **Скин головы** — после смены скина кэш обновляется до 10 минут (сбросить можно через `/chat reload`)
 - **Инлайн-тред** — обновляется только на момент отправки родителя
 - **Удаление** — через перерисовку (200+ сообщений — возможны «мигания»)
-- **MineSQL** — обязателен; без него плагин не запустится
+- **MineSQL** — без плагина чат работает, но история/игноры/статистика отключаются
 - **Префиксы LuckPerms** — `%luckperms_prefix%` работает только если установлен expansion `Expansion-LuckPerms.jar` в PAPI
+- **Подписанный чат** — плагин отменяет `AsyncChatEvent` и рассылает сообщения сам (это нужно для кнопок удаления, тредов и перерисовки), поэтому подписи и жалобы Mojang к таким сообщениям не применяются
 
 ---
 
@@ -409,9 +420,10 @@ Pull requests приветствуются! Для крупных изменен
 ### Что можно улучшить
 - Discord → игра (через бота)
 - Дополнительные языки
-- Тесты (MockBukkit)
+- Redis pub/sub для кросс-серверных каналов (сети)
 - Больше Chat Games (multiple-choice, reaction)
 - PacketEvents-интеграция для удаления без перерисовки
+- Поддержка Folia (`folia-supported: true` + региональные планировщики)
 
 ---
 

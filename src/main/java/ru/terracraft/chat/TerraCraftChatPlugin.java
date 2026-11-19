@@ -24,11 +24,13 @@ import ru.terracraft.chat.moderation.ChatLogger;
 import ru.terracraft.chat.moderation.ChatModerator;
 import ru.terracraft.chat.moderation.RuleManager;
 import ru.terracraft.chat.storage.StorageManager;
+import ru.terracraft.chat.util.Tasks;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 public final class TerraCraftChatPlugin extends JavaPlugin {
 
@@ -74,7 +76,7 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         int pluginId = 34792;
         new Metrics(this, pluginId);
 
-        registerPermissions();
+        ensurePermissions();
         loadConfigs();
 
         this.storageManager = new StorageManager(this);
@@ -104,32 +106,13 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         this.localAnswerManager = new LocalAnswerManager(this, chatConfig);
 
         this.chatMessageRegistry = new ChatMessageRegistry(
-                this,
                 chatConfig.delete().cacheSize(),
                 chatConfig.delete().ttlSeconds()
         );
 
-        loadHistoryFromDb();
+        loadHistoryFromDbAsync();
 
-        getServer().getScheduler().runTaskTimerAsynchronously(
-                this, chatMessageRegistry::cleanup, 1200L, 1200L
-        );
-
-        getServer().getScheduler().runTaskTimerAsynchronously(
-                this,
-                () -> {
-                    long cutoff = System.currentTimeMillis()
-                            - (chatConfig.delete().ttlSeconds() * 1000L);
-                    storageManager.cleanupHistory(cutoff);
-                },
-                20L * 60 * 5, 20L * 60 * 5
-        );
-
-        getServer().getScheduler().runTaskTimerAsynchronously(
-                this,
-                () -> storageManager.cleanupExpiredIgnores(System.currentTimeMillis()),
-                20L * 60, 20L * 60
-        );
+        scheduleMaintenance();
 
         this.chatFormatter = new ChatFormatter(this, chatConfig);
         this.headDisplayManager = new HeadDisplayManager(
@@ -200,6 +183,10 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
             translationManager.shutdown();
         }
 
+        // Сначала дожидаемся фоновых задач (они могут писать в БД),
+        // и только потом закрываем хранилище — иначе потеряем последние записи.
+        Tasks.shutdown();
+
         if (storageManager != null) {
             storageManager.close();
         }
@@ -256,6 +243,7 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         getLogger().info("");
         getLogger().info(" Storage:");
         getLogger().info("   Type:           MineSQL");
+        getLogger().info("   Available:      " + status(storageManager.isAvailable()));
         getLogger().info("   Table prefix:   " + chatConfig.storage().tablePrefix());
         getLogger().info("");
         getLogger().info(" Features:");
@@ -263,9 +251,11 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         getLogger().info("   Rules:          " + ruleManager.size());
         getLogger().info("   Threads:        " + status(chatConfig.threads().enabled()));
         getLogger().info("   Player heads:   " + status(chatConfig.display().showPlayerHeads()));
+        getLogger().info("   Head source:    "
+                + (skinHeadCache.usesSkinsRestorer() ? "SkinsRestorer" : "UUID"));
         getLogger().info("   Head display:   " + status(chatConfig.display().headDisplayEnabled()));
         getLogger().info("   Emojis:         " + status(chatConfig.emoji().enabled()));
-        getLogger().info("   PAPI expansion: " + status(getServer().getPluginManager().getPlugin("PlaceholderAPI") != null));
+        getLogger().info("   PAPI expansion: " + status(chatPlaceholders != null));
         getLogger().info("   Discord:        " + status(chatConfig.discord().enabled()));
         getLogger().info("   AutoBroadcast:  " + status(autoBroadcast != null));
         getLogger().info("   Chat Games:     " + status(chatConfig.chatGames().enabled())
@@ -294,70 +284,59 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
     //  PERMISSIONS
     // ============================================================
 
-    private void registerPermissions() {
-        var pm = getServer().getPluginManager();
+    /** Право и его значение по умолчанию. */
+    private record PermissionSpec(String node, PermissionDefault defaultValue) {}
 
-        pm.addPermission(new Permission("terracraftchat.color",
-                "Allows using &-codes and hex colors in messages",
-                PermissionDefault.FALSE));
-        pm.addPermission(new Permission("terracraftchat.msg",
-                "Allows using /msg", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.reply",
-                "Allows using /reply", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.ignore",
-                "Allows using /ignore", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.thread",
-                "Allows replying in threads", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.nick",
-                "Allows using /nick", PermissionDefault.OP));
+    private static final List<PermissionSpec> PERMISSIONS = List.of(
+            new PermissionSpec("terracraftchat.color", PermissionDefault.FALSE),
+            new PermissionSpec("terracraftchat.msg", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.reply", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.ignore", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.thread", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.nick", PermissionDefault.OP),
 
-        pm.addPermission(new Permission("terracraftchat.emoji",
-                "Allows using :emoji: in chat", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.item",
-                "Allows using [item] in chat", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.inv",
-                "Allows using [inv] in chat", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.inv.admin",
-                "Allows /inv_show player <ник>", PermissionDefault.OP));
+            new PermissionSpec("terracraftchat.emoji", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.item", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.inv", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.inv.admin", PermissionDefault.OP),
 
-        pm.addPermission(new Permission("terracraftchat.broadcast",
-                "Allows using /broadcast", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.admin",
-                "Allows /chat reload", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.socialspy",
-                "Allows seeing all private messages", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.moderator",
-                "Allows deleting messages by clicking", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.channel.staff",
-                "Allows using the staff channel", PermissionDefault.OP));
+            new PermissionSpec("terracraftchat.broadcast", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.admin", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.socialspy", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.moderator", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.channel.staff", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.stats", PermissionDefault.OP),
 
-        pm.addPermission(new Permission("terracraftchat.stats",
-                "Allows /chat stats", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.group.create",
-                "Allows /chat create-group", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.group.use",
-                "Allows /chat group <name> <msg>", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.group.invite",
-                "Allows /chat invite", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.group.leave",
-                "Allows /chat leave", PermissionDefault.TRUE));
-        pm.addPermission(new Permission("terracraftchat.group.delete",
-                "Allows /chat delete <group>", PermissionDefault.TRUE));
+            new PermissionSpec("terracraftchat.group.create", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.group.use", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.group.invite", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.group.leave", PermissionDefault.TRUE),
+            new PermissionSpec("terracraftchat.group.delete", PermissionDefault.TRUE),
 
-        pm.addPermission(new Permission("terracraftchat.bypass.ads",
-                "Bypasses anti-advertisement", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.bypass.swear",
-                "Bypasses swear filter", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.bypass.levenshtein",
-                "Bypasses similarity check", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.bypass.flood",
-                "Bypasses anti-flood", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.bypass.crash",
-                "Bypasses anti-crash", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.bypass.cooldown",
-                "Bypasses cooldown", PermissionDefault.OP));
-        pm.addPermission(new Permission("terracraftchat.bypass.duplicate",
-                "Bypasses duplicate check", PermissionDefault.OP));
+            new PermissionSpec("terracraftchat.bypass.ads", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.bypass.swear", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.bypass.levenshtein", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.bypass.flood", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.bypass.crash", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.bypass.cooldown", PermissionDefault.OP),
+            new PermissionSpec("terracraftchat.bypass.duplicate", PermissionDefault.OP)
+    );
+
+    /**
+     * Права объявлены в {@code paper-plugin.yml} (их видят LuckPerms и
+     * {@code /permissions} сразу). Это подстраховка для серверов, где секция
+     * {@code permissions} не читается: незарегистрированное право нельзя
+     * выдать плагином прав, а {@code hasPermission} вернёт false и «сломает»,
+     * например, {@code /msg} для обычных игроков.
+     */
+    private void ensurePermissions() {
+        var manager = getServer().getPluginManager();
+
+        for (PermissionSpec spec : PERMISSIONS) {
+            if (manager.getPermission(spec.node()) == null) {
+                manager.addPermission(new Permission(spec.node(), spec.defaultValue()));
+            }
+        }
     }
 
     // ============================================================
@@ -414,7 +393,9 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
             this.translationManager.reload();
             loadChannels();
 
-            // Сброс кэша PAPI-статистики
+            // Сброс кэшей
+            this.skinHeadCache.invalidateAll();
+            this.groupManager.invalidateAllCache();
             if (chatPlaceholders != null) {
                 chatPlaceholders.invalidateAll();
             }
@@ -432,43 +413,74 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         return true;
     }
 
-    private void loadHistoryFromDb() {
-        if (storageManager == null) return;
+    /**
+     * Периодические задачи обслуживания (все — асинхронные, через
+     * Paper AsyncScheduler).
+     */
+    private void scheduleMaintenance() {
+        // Чистка кэша сообщений
+        getServer().getAsyncScheduler().runAtFixedRate(this, task -> chatMessageRegistry.cleanup(),
+                60, 60, TimeUnit.SECONDS);
 
-        long start = System.currentTimeMillis();
+        // Чистка истории по TTL
+        getServer().getAsyncScheduler().runAtFixedRate(this, task -> {
+            if (!storageManager.isAvailable()) return;
+            long cutoff = System.currentTimeMillis()
+                    - (chatConfig.delete().ttlSeconds() * 1000L);
+            storageManager.cleanupHistory(cutoff);
+        }, 5, 5, TimeUnit.MINUTES);
+
+        // Чистка просроченных игноров
+        getServer().getAsyncScheduler().runAtFixedRate(this, task -> {
+            if (!storageManager.isAvailable()) return;
+            storageManager.cleanupExpiredIgnores(System.currentTimeMillis());
+        }, 1, 1, TimeUnit.MINUTES);
+    }
+
+    /**
+     * Восстановление истории чата при старте — на виртуальном потоке,
+     * чтобы не тормозить запуск сервера.
+     */
+    private void loadHistoryFromDbAsync() {
+        if (!storageManager.isAvailable()) return;
+
         long cutoff = System.currentTimeMillis()
                 - (chatConfig.delete().ttlSeconds() * 1000L);
         int limit = chatConfig.delete().cacheSize();
 
-        var rows = storageManager.loadRecentHistory(cutoff, limit);
-        if (rows.isEmpty()) return;
+        Tasks.runAsync(this, "history-restore", () -> {
+            long start = System.currentTimeMillis();
 
-        List<UUID> ids = rows.stream().map(StorageManager.HistoryRow::id).toList();
-        var viewersByMsg = storageManager.loadViewersBatch(ids);
-        var repliesByMsg = storageManager.getThreadRepliesBatch(ids);
+            var rows = storageManager.loadRecentHistory(cutoff, limit);
+            if (rows.isEmpty()) return;
 
-        for (var row : rows) {
-            ChatMessage msg = new ChatMessage(
-                    row.id(), row.senderUuid(), row.senderName(),
-                    row.rawMessage(), row.channelId()
-            );
+            List<UUID> ids = rows.stream().map(StorageManager.HistoryRow::id).toList();
+            var viewersByMessage = storageManager.loadViewersBatch(ids);
+            var repliesByMessage = storageManager.getThreadRepliesBatch(ids);
 
-            var viewerIds = viewersByMsg.getOrDefault(row.id(), List.of());
-            for (UUID v : viewerIds) msg.addViewer(v);
+            for (var row : rows) {
+                ChatMessage message = new ChatMessage(
+                        row.id(), row.senderUuid(), row.senderName(),
+                        row.rawMessage(), row.channelId()
+                );
 
-            var replies = repliesByMsg.getOrDefault(row.id(), List.of());
-            for (var r : replies) {
-                msg.addReply(new ChatMessage.ThreadReply(
-                        r.id(), r.authorUuid(), r.authorName(),
-                        r.text(), r.timestamp()
-                ));
+                for (UUID viewerId : viewersByMessage.getOrDefault(row.id(), List.of())) {
+                    message.addViewer(viewerId);
+                }
+
+                for (var reply : repliesByMessage.getOrDefault(row.id(), List.of())) {
+                    message.addReply(new ChatMessage.ThreadReply(
+                            reply.id(), reply.authorUuid(), reply.authorName(),
+                            reply.text(), reply.timestamp()
+                    ));
+                }
+
+                chatMessageRegistry.registerWithoutThreadLoad(message);
             }
 
-            chatMessageRegistry.registerWithoutThreadLoad(msg);
-        }
-
-        getLogger().info("Загружено сообщений из истории: " + rows.size()
-                + " за " + (System.currentTimeMillis() - start) + " мс");
+            getLogger().info("Загружено сообщений из истории: " + rows.size()
+                    + " за " + (System.currentTimeMillis() - start) + " мс");
+        });
     }
 
     // ============================================================
@@ -491,7 +503,7 @@ public final class TerraCraftChatPlugin extends JavaPlugin {
         new ChatStatsCommand(this).register();
         new ChatPurgeCommand(this).register();
         new ChatGroupCommand(this).register();
-        new ChatGamesCommand(this).register();   // ← добавили
+        new ChatGamesCommand(this).register();
     }
 
     // ============================================================

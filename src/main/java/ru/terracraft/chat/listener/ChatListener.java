@@ -19,8 +19,14 @@ import ru.terracraft.chat.model.ChatMessage;
 import ru.terracraft.chat.moderation.ChatModerator;
 import ru.terracraft.chat.moderation.Rule;
 import ru.terracraft.chat.util.MessageUtil;
+import ru.terracraft.chat.util.Tasks;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
 
 public class ChatListener implements Listener {
 
@@ -41,6 +47,8 @@ public class ChatListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onChat(AsyncChatEvent event) {
+        // Плагин сам рендерит и рассылает сообщение (нужно для кнопок удаления,
+        // тредов и перерисовки чата).
         event.setCancelled(true);
 
         final Player sender = event.getPlayer();
@@ -54,7 +62,7 @@ public class ChatListener implements Listener {
         Channel channel = resolved.channel();
 
         if (channel == null || !cm.canUse(sender, channel)) {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Tasks.sync(plugin, () -> {
                 if (sender.isOnline()) MessageUtil.sendPrefixed(sender, "chat.channel-no-access");
             });
             return;
@@ -69,117 +77,131 @@ public class ChatListener implements Listener {
                 sender.hasPermission("terracraftchat.bypass.cooldown"),
                 sender.hasPermission("terracraftchat.bypass.duplicate")
         );
-        ChatModerator.CheckResult result = plugin.getChatModerator()
-                .check(senderId, resolved.message(), bypass);
+
+        ChatModerator moderator = plugin.getChatModerator();
+        ChatModerator.Outcome outcome = moderator.check(senderId, resolved.message(), bypass);
 
         // ВАЖНО: записываем ИСХОДНОЕ сообщение (без цензуры),
         // чтобы DUPLICATE/LEVENSHTEIN сравнивали оригиналы.
-        if (result.result() == ChatModerator.Result.OK
-                || result.result() == ChatModerator.Result.SWEAR) {
-            plugin.getChatModerator().record(senderId, resolved.message());
-        }
-
-        // Блокирующие случаи — сообщение игроку в main
-        if (result.result() != ChatModerator.Result.OK
-                && result.result() != ChatModerator.Result.SWEAR) {
-            var storage = plugin.getStorageManager();
-            if (storage != null) {
-                switch (result.result()) {
-                    case SWEAR_BLOCK -> storage.incrementStats(senderId, "messages_blocked", "swear_caught");
-                    case ADVERTISEMENT -> storage.incrementStats(senderId, "messages_blocked", "ads_caught");
-                    default -> storage.incrementStats(senderId, "messages_blocked");
-                }
+        final String actualMessage = switch (outcome) {
+            case ChatModerator.Outcome.Allowed allowed -> {
+                moderator.record(senderId, resolved.message());
+                yield allowed.message();
             }
+            case ChatModerator.Outcome.Censored censored -> {
+                moderator.record(senderId, resolved.message());
+                yield censored.message();
+            }
+            case ChatModerator.Outcome.Blocked blocked -> {
+                reportBlocked(sender, blocked);
+                yield null;
+            }
+        };
 
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                if (!sender.isOnline()) return;
-                switch (result.result()) {
-                    case COOLDOWN -> MessageUtil.send(sender, "chat.cooldown",
-                            Argument.string("seconds", String.valueOf(result.cooldownRemaining())));
-                    case DUPLICATE -> MessageUtil.send(sender, "chat.duplicate");
-                    case FLOOD -> MessageUtil.send(sender, "chat.flood");
-                    case SIMILAR -> MessageUtil.send(sender, "chat.similar");
-                    case SWEAR_BLOCK -> MessageUtil.send(sender, "chat.swear");
-                    case ADVERTISEMENT -> MessageUtil.send(sender, "chat.anti-ad");
-                    case CRASH -> MessageUtil.send(sender, "chat.crash");
-                    default -> { }
-                }
-            });
-            return;
-        }
-
-        final String actualMessage = result.message();
-        if (actualMessage.isEmpty()) return;
+        if (actualMessage == null || actualMessage.isEmpty()) return;
 
         final Channel finalChannel = channel;
 
         // ===== ФАЗА 2: main =====
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
+        Tasks.sync(plugin, () -> handleMessage(sender, senderId, actualMessage, finalChannel));
+    }
+
+    /**
+     * Сообщение игроку о блокировке + статистика.
+     * Вызывается из async-контекста события — отправка уходит в main.
+     */
+    private void reportBlocked(Player sender, ChatModerator.Outcome.Blocked blocked) {
+        var storage = plugin.getStorageManager();
+        if (storage != null) {
+            switch (blocked.reason()) {
+                case SWEAR_BLOCK -> storage.incrementStats(sender.getUniqueId(), "messages_blocked", "swear_caught");
+                case ADVERTISEMENT -> storage.incrementStats(sender.getUniqueId(), "messages_blocked", "ads_caught");
+                default -> storage.incrementStats(sender.getUniqueId(), "messages_blocked");
+            }
+        }
+
+        Tasks.sync(plugin, () -> {
             if (!sender.isOnline()) return;
-
-            // === RULE ENGINE (main, т.к. dispatchCommand) ===
-            Rule rule = plugin.getRuleManager().match(actualMessage);
-            if (rule != null) {
-                plugin.getRuleManager().execute(rule, sender);
-                if (rule.cancelMessage()) {
-                    return; // сообщение не рассылаем
-                }
+            switch (blocked.reason()) {
+                case COOLDOWN -> MessageUtil.send(sender, "chat.cooldown",
+                        Argument.string("seconds", String.valueOf(blocked.cooldownRemaining())));
+                case DUPLICATE -> MessageUtil.send(sender, "chat.duplicate");
+                case FLOOD -> MessageUtil.send(sender, "chat.flood");
+                case SIMILAR -> MessageUtil.send(sender, "chat.similar");
+                case SWEAR_BLOCK -> MessageUtil.send(sender, "chat.swear");
+                case ADVERTISEMENT -> MessageUtil.send(sender, "chat.anti-ad");
+                case CRASH -> MessageUtil.send(sender, "chat.crash");
+                default -> { }
             }
-
-            // Chat game
-            if (plugin.getChatGameManager().checkAnswer(sender, actualMessage)) return;
-
-            // Тред
-            if (plugin.getThreadManager().isActive(sender)) {
-                plugin.getThreadManager().postReply(sender, actualMessage);
-                return;
-            }
-
-            // Зрители
-            List<Player> viewers = collectViewers(sender, finalChannel);
-            if (viewers.isEmpty()) return;
-
-            // ChatMessage с channelId (для перерисовки)
-            ChatMessage registered = new ChatMessage(
-                    sender.getUniqueId(), sender.getName(), actualMessage, finalChannel.id()
-            );
-            for (Player viewer : viewers) {
-                registered.addViewer(viewer.getUniqueId());
-            }
-            plugin.getChatMessageRegistry().register(registered);
-
-            // Сохраняем в БД (async) — для истории и тредов после перезахода
-            var storage = plugin.getStorageManager();
-            if (storage != null) {
-                storage.saveMessage(
-                        registered.getId(),
-                        sender.getUniqueId(),
-                        sender.getName(),
-                        finalChannel.id(),
-                        actualMessage,
-                        registered.getTimestamp()
-                );
-                storage.incrementStat(senderId, "messages_sent");
-
-                // Сохраняем viewers — для восстановления истории при старте
-                Set<UUID> viewerIds = new HashSet<>();
-                for (Player v : viewers) viewerIds.add(v.getUniqueId());
-                storage.saveMessageViewers(registered.getId(), viewerIds);
-
-            }
-
-            String format = plugin.getChatConfig().formats().byKey(finalChannel.formatKey());
-            for (Player viewer : viewers) {
-                Component formatted = formatter.formatChannel(
-                        sender, actualMessage, viewer, format, registered.getId());
-                viewer.sendMessage(formatted);
-            }
-
-            handleSideEffects(sender, finalChannel, format, actualMessage, viewers);
         });
     }
 
-    private void handleSideEffects(Player sender, Channel channel, String format,
+    private void handleMessage(Player sender, UUID senderId, String actualMessage, Channel channel) {
+        if (!sender.isOnline()) return;
+
+        // === RULE ENGINE (main, т.к. dispatchCommand) ===
+        Rule rule = plugin.getRuleManager().match(actualMessage);
+        if (rule != null) {
+            plugin.getRuleManager().execute(rule, sender);
+            if (rule.cancelMessage()) {
+                return; // сообщение не рассылаем
+            }
+        }
+
+        // Chat game
+        if (plugin.getChatGameManager().checkAnswer(sender, actualMessage)) return;
+
+        // Тред
+        if (plugin.getThreadManager().isActive(sender)) {
+            plugin.getThreadManager().postReply(sender, actualMessage);
+            return;
+        }
+
+        // Зрители
+        List<Player> viewers = collectViewers(sender, channel);
+        if (viewers.isEmpty()) return;
+
+        // ChatMessage с channelId (для перерисовки)
+        ChatMessage registered = new ChatMessage(
+                sender.getUniqueId(), sender.getName(), actualMessage, channel.id()
+        );
+        for (Player viewer : viewers) {
+            registered.addViewer(viewer.getUniqueId());
+        }
+        plugin.getChatMessageRegistry().register(registered);
+
+        // Сохраняем в БД (async) — для истории и тредов после перезахода
+        var storage = plugin.getStorageManager();
+        if (storage != null) {
+            storage.saveMessage(
+                    registered.getId(),
+                    sender.getUniqueId(),
+                    sender.getName(),
+                    channel.id(),
+                    actualMessage,
+                    registered.getTimestamp()
+            );
+            storage.incrementStat(senderId, "messages_sent");
+
+            // Сохраняем viewers — для восстановления истории при старте
+            Set<UUID> viewerIds = new HashSet<>();
+            for (Player v : viewers) viewerIds.add(v.getUniqueId());
+            storage.saveMessageViewers(registered.getId(), viewerIds);
+        }
+
+        // Конверт (PAPI, &-коды, голова) считается ОДИН раз на сообщение,
+        // а не для каждого зрителя.
+        ChatFormatter.Envelope envelope = formatter.envelope(sender, channel.formatKey());
+        for (Player viewer : viewers) {
+            viewer.sendMessage(formatter.formatChannel(
+                    sender, actualMessage, viewer, envelope, registered.getId()));
+        }
+
+        handleSideEffects(sender, channel, envelope, actualMessage, viewers);
+    }
+
+    private void handleSideEffects(Player sender, Channel channel,
+                                   ChatFormatter.Envelope envelope,
                                    String message, List<Player> viewers) {
         String type = channel.isGlobal() ? "GLOBAL" : "LOCAL";
         log(type, sender, message);
@@ -201,7 +223,7 @@ public class ChatListener implements Listener {
         if (!channel.isGlobal()
                 && plugin.getChatConfig().display().headDisplayEnabled()) {
             Component head = formatter.formatChannel(
-                    sender, message, sender, format, null);
+                    sender, message, sender, envelope, null);
             headDisplayManager.showMessage(sender, head);
         }
     }

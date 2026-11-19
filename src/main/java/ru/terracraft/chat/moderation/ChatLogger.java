@@ -1,5 +1,6 @@
 package ru.terracraft.chat.moderation;
 
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 
 import java.io.BufferedWriter;
@@ -10,6 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ChatLogger {
@@ -23,6 +25,7 @@ public class ChatLogger {
 
     private volatile BufferedWriter writer;
     private volatile LocalDate currentDate;
+    private volatile ScheduledTask flushTask;
 
     public ChatLogger(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
@@ -40,8 +43,10 @@ public class ChatLogger {
             File logFile = new File(logsFolder, "chat-" + currentDate.format(dateFormatter) + ".log");
             this.writer = new BufferedWriter(new FileWriter(logFile, true));
 
-            plugin.getServer().getScheduler()
-                    .runTaskTimerAsynchronously(plugin, this::flush, 100L, 100L);
+            // Paper AsyncScheduler: задачу можно отменить в close(),
+            // иначе она продолжает тикать после выключения плагина.
+            this.flushTask = plugin.getServer().getAsyncScheduler()
+                    .runAtFixedRate(plugin, task -> flush(), 5, 5, TimeUnit.SECONDS);
 
         } catch (IOException e) {
             plugin.getLogger().warning("Не удалось открыть лог чата: " + e.getMessage());
@@ -123,7 +128,13 @@ public class ChatLogger {
     }
 
     public void close() {
-        // Последний flush
+        ScheduledTask task = this.flushTask;
+        if (task != null) {
+            task.cancel();
+            this.flushTask = null;
+        }
+
+        // Последний слив очереди
         flush();
 
         BufferedWriter w = this.writer;

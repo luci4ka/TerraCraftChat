@@ -1,7 +1,7 @@
 name: TerraCraftChat
 version: '${version}'
 main: ru.terracraft.chat.TerraCraftChatPlugin
-api-version: '26.2'
+api-version: '26.3'
 authors: [ luci ]
 description: Плагин на чат
 website: https://github.com/luci4ka/TerraCraftChat
@@ -13,11 +13,110 @@ dependencies:
       load: BEFORE
       required: true
       join-classpath: true
+    MineSQL:
+      load: BEFORE
+      required: false
+      join-classpath: true
     PlaceholderAPI:
       load: BEFORE
       required: false
       join-classpath: true
-    MineSQL:
+    SkinsRestorer:
       load: BEFORE
-      required: true
+      required: false
       join-classpath: true
+
+# ============================================================
+#  Права объявлены здесь, а не через PluginManager#addPermission:
+#  так их видят LuckPerms и /permissions сразу при старте,
+#  и они не «теряются» при перезагрузке сервера.
+# ============================================================
+permissions:
+  terracraftchat.color:
+    description: "Разрешает &-коды и hex-цвета в сообщениях"
+    default: false
+  terracraftchat.msg:
+    description: "Разрешает /msg"
+    default: true
+  terracraftchat.reply:
+    description: "Разрешает /reply"
+    default: true
+  terracraftchat.ignore:
+    description: "Разрешает /ignore"
+    default: true
+  terracraftchat.thread:
+    description: "Разрешает отвечать в тредах"
+    default: true
+  terracraftchat.nick:
+    description: "Разрешает /nick"
+    default: op
+
+  terracraftchat.emoji:
+    description: "Разрешает :emoji: в чате"
+    default: true
+  terracraftchat.item:
+    description: "Разрешает [item] в чате"
+    default: true
+  terracraftchat.inv:
+    description: "Разрешает [inv] в чате"
+    default: true
+  terracraftchat.inv.admin:
+    description: "Разрешает /inv_show player <ник>"
+    default: op
+
+  terracraftchat.broadcast:
+    description: "Разрешает /broadcast"
+    default: op
+  terracraftchat.admin:
+    description: "Разрешает /chat reload, /chat history, /chat purge"
+    default: op
+  terracraftchat.socialspy:
+    description: "Разрешает видеть личные сообщения"
+    default: op
+  terracraftchat.moderator:
+    description: "Разрешает удалять сообщения кликом"
+    default: op
+  terracraftchat.channel.staff:
+    description: "Доступ к staff-каналу"
+    default: op
+  terracraftchat.stats:
+    description: "Разрешает /chat stats"
+    default: op
+
+  terracraftchat.group.create:
+    description: "Разрешает /chat create-group"
+    default: true
+  terracraftchat.group.use:
+    description: "Разрешает /chat group <name> <msg>"
+    default: true
+  terracraftchat.group.invite:
+    description: "Разрешает /chat invite"
+    default: true
+  terracraftchat.group.leave:
+    description: "Разрешает /chat leave"
+    default: true
+  terracraftchat.group.delete:
+    description: "Разрешает /chat delete <group>"
+    default: true
+
+  terracraftchat.bypass.ads:
+    description: "Обход анти-рекламы"
+    default: op
+  terracraftchat.bypass.swear:
+    description: "Обход фильтра мата"
+    default: op
+  terracraftchat.bypass.levenshtein:
+    description: "Обход проверки похожести"
+    default: op
+  terracraftchat.bypass.flood:
+    description: "Обход анти-флуда"
+    default: op
+  terracraftchat.bypass.crash:
+    description: "Обход anti-crash"
+    default: op
+  terracraftchat.bypass.cooldown:
+    description: "Обход кулдауна"
+    default: op
+  terracraftchat.bypass.duplicate:
+    description: "Обход проверки дублей"
+    default: op

@@ -1,6 +1,5 @@
 package ru.terracraft.chat.listener;
 
-import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -10,6 +9,12 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.manager.NickManager;
 
+/**
+ * Прогрев данных игрока при входе и очистка кэшей при выходе.
+ *
+ * <p>Всё, что требует БД, уходит на виртуальные потоки: main-поток
+ * не ждёт ни один {@code SELECT}.
+ */
 public class PlayerDataListener implements Listener {
 
     private final TerraCraftChatPlugin plugin;
@@ -24,18 +29,19 @@ public class PlayerDataListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
-        // --- Nick (sync, быстро — из кэша/БД 1 запрос) ---
+        // Ник: кэш -> async загрузка -> displayName в main
         nickManager.load(player);
-        Component nick = nickManager.getNickComponent(player);
-        if (nick != null) {
-            player.displayName(nick);
-        }
 
-        // --- Player data (async внутри) ---
         plugin.getHeadDisplayManager().hideAllFrom(player);
-        plugin.getIgnoreManager().load(player);         // async
-        plugin.getChannelManager().preload(player);     // async
+        plugin.getIgnoreManager().load(player);
+        plugin.getChannelManager().preload(player);
+        plugin.getReplyManager().load(player);
         plugin.getSkinHeadCache().refresh(player);
+
+        var placeholders = plugin.getChatPlaceholders();
+        if (placeholders != null) {
+            placeholders.preload(player);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -43,7 +49,6 @@ public class PlayerDataListener implements Listener {
         Player player = event.getPlayer();
 
         nickManager.unload(player);
-
         plugin.getIgnoreManager().unload(player);
         plugin.getReplyManager().clear(player);
         plugin.getChatModerator().clear(player.getUniqueId());
@@ -52,5 +57,11 @@ public class PlayerDataListener implements Listener {
         plugin.getHeadDisplayManager().remove(player);
         plugin.getSocialSpyManager().disable(player);
         plugin.getChannelManager().clearActive(player);
+        plugin.getGroupManager().clearActive(player);
+
+        var placeholders = plugin.getChatPlaceholders();
+        if (placeholders != null) {
+            placeholders.invalidateStats(player.getUniqueId());
+        }
     }
 }

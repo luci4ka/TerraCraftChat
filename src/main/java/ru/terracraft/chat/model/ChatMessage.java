@@ -44,38 +44,33 @@ public class ChatMessage {
     public boolean wasSeenBy(UUID uuid) { return viewers.contains(uuid); }
 
     public void addReply(ThreadReply reply) { thread.add(reply); }
-    public List<ThreadReply> getThread() { return thread; }
     public int getThreadSize() { return thread.size(); }
+
+    /** Иммутабельный снимок тред-ответов. */
+    public List<ThreadReply> getThread() {
+        return List.copyOf(thread);
+    }
 
     public List<ThreadReply> getRecentReplies(int n) {
         int size = thread.size();
-        if (size <= n) return new ArrayList<>(thread);
+        if (size <= n) return List.copyOf(thread);
         return new ArrayList<>(thread.subList(size - n, size));
     }
 
-    public static class ThreadReply {
-        private final UUID id;
-        private final UUID authorId;
-        private final String authorName;
-        private final String text;
-        private final long timestamp;
+    /**
+     * Ответ в треде.
+     *
+     * @param id         id ответа (для правки/удаления)
+     * @param authorId   автор
+     * @param authorName имя автора на момент отправки
+     * @param text       текст ответа
+     * @param timestamp  время отправки (мс)
+     */
+    public record ThreadReply(UUID id, UUID authorId, String authorName,
+                              String text, long timestamp) {
 
         public ThreadReply(UUID authorId, String authorName, String text) {
             this(UUID.randomUUID(), authorId, authorName, text, System.currentTimeMillis());
         }
-
-        public ThreadReply(UUID id, UUID authorId, String authorName, String text, long timestamp) {
-            this.id = id;
-            this.authorId = authorId;
-            this.authorName = authorName;
-            this.text = text;
-            this.timestamp = timestamp;
-        }
-
-        public UUID getId() { return id; }
-        public UUID getAuthorId() { return authorId; }
-        public String getAuthorName() { return authorName; }
-        public String getText() { return text; }
-        public long getTimestamp() { return timestamp; }
     }
 }

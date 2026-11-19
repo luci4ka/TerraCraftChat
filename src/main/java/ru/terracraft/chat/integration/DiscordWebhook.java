@@ -3,7 +3,7 @@ package ru.terracraft.chat.integration;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.config.ChatConfig;
 
 import java.net.URI;
@@ -17,14 +17,14 @@ import java.util.Deque;
 
 public class DiscordWebhook {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private volatile ChatConfig config;
     private final HttpClient httpClient;
     private final Gson gson = new Gson();
     private final Deque<String> buffer = new ArrayDeque<>();
     private int taskId = -1;
 
-    public DiscordWebhook(JavaPlugin plugin, ChatConfig config) {
+    public DiscordWebhook(TerraCraftChatPlugin plugin, ChatConfig config) {
         this.plugin = plugin;
         this.config = config;
         this.httpClient = HttpClient.newBuilder()

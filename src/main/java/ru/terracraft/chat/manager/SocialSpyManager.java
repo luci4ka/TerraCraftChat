@@ -1,7 +1,7 @@
 package ru.terracraft.chat.manager;
 
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.storage.StorageManager;
 
 import java.util.Set;
@@ -12,7 +12,7 @@ public class SocialSpyManager {
     private final StorageManager storage;
     private final Set<UUID> enabled = ConcurrentHashMap.newKeySet();
 
-    public SocialSpyManager(JavaPlugin plugin, StorageManager storage) {
+    public SocialSpyManager(TerraCraftChatPlugin plugin, StorageManager storage) {
         this.storage = storage;
         this.enabled.addAll(storage.getAllSocialSpy());
     }

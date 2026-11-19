@@ -2,17 +2,27 @@ package ru.terracraft.chat.integration;
 
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.model.Channel;
 import ru.terracraft.chat.storage.StorageManager;
+import ru.terracraft.chat.util.Tasks;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * PAPI-расширение {@code %terracraftchat_...%}.
+ *
+ * <p>Плейсхолдеры вызываются из таба/скорборда на каждом тике, поэтому
+ * {@link #onRequest} <b>никогда</b> не обращается к БД: значение берётся из
+ * кэша, а его обновление идёт на виртуальном потоке. Первое обращение после
+ * входа игрока отдаёт нули — к следующему обновлению таба данные уже придут.
+ */
 public class ChatPlaceholders extends PlaceholderExpansion {
 
     private static final long STATS_CACHE_TTL_MS = 10_000L;
@@ -20,8 +30,8 @@ public class ChatPlaceholders extends PlaceholderExpansion {
     private final TerraCraftChatPlugin plugin;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
-    // Кэш статистики: uuid → (stats, expiresAt)
     private final Map<UUID, CachedStats> statsCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> statsLoading = new ConcurrentHashMap<>();
 
     private record CachedStats(StorageManager.PlayerStats stats, long expiresAt) {
         boolean valid() {
@@ -41,11 +51,14 @@ public class ChatPlaceholders extends PlaceholderExpansion {
 
     @Override
     public String onRequest(OfflinePlayer player, @NotNull String params) {
+        String key = params.toLowerCase();
+
         if (player == null) {
-            return switch (params.toLowerCase()) {
+            return switch (key) {
                 case "channels" -> String.valueOf(plugin.getChannelManager().all().size());
-                case "threads_enabled" -> plugin.getChatConfig().threads().enabled() ? "true" : "false";
+                case "threads_enabled" -> String.valueOf(plugin.getChatConfig().threads().enabled());
                 case "games_count" -> String.valueOf(plugin.getGamesConfig().getGames().size());
+                case "storage" -> plugin.getStorageManager().isAvailable() ? "true" : "false";
                 default -> null;
             };
         }
@@ -53,11 +66,11 @@ public class ChatPlaceholders extends PlaceholderExpansion {
         Player online = player.getPlayer();
         String name = player.getName() != null ? player.getName() : "";
 
-        switch (params.toLowerCase()) {
+        switch (key) {
             case "nick_formatted", "nick_mm":
                 if (online != null) {
-                    var nickComp = plugin.getNickManager().getNickComponent(online);
-                    if (nickComp != null) return miniMessage.serialize(nickComp);
+                    var nickComponent = plugin.getNickManager().getNickComponent(online);
+                    if (nickComponent != null) return miniMessage.serialize(nickComponent);
                 }
                 return "<white>" + name + "</white>";
 
@@ -67,32 +80,30 @@ public class ChatPlaceholders extends PlaceholderExpansion {
 
             case "nick":
                 if (online != null) {
-                    var nickComp = plugin.getNickManager().getNickComponent(online);
-                    if (nickComp != null) {
-                        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-                                .plainText().serialize(nickComp);
+                    var nickComponent = plugin.getNickManager().getNickComponent(online);
+                    if (nickComponent != null) {
+                        return PlainTextComponentSerializer.plainText().serialize(nickComponent);
                     }
                 }
                 return name;
 
             case "displayname":
                 if (online != null) {
-                    return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-                            .plainText().serialize(online.displayName());
+                    return PlainTextComponentSerializer.plainText().serialize(online.displayName());
                 }
                 return name;
 
             case "channel":
                 if (online != null) {
-                    Channel ch = plugin.getChannelManager().getActive(online);
-                    return ch != null ? ch.id() : "unknown";
+                    Channel channel = plugin.getChannelManager().getActive(online);
+                    return channel != null ? channel.id() : "unknown";
                 }
                 return plugin.getChatConfig().channels().defaultChannel();
 
             case "channel_prefix":
                 if (online != null) {
-                    Channel ch = plugin.getChannelManager().getActive(online);
-                    return ch != null ? ch.prefix() : "";
+                    Channel channel = plugin.getChannelManager().getActive(online);
+                    return channel != null ? channel.prefix() : "";
                 }
                 return "";
 
@@ -106,29 +117,27 @@ public class ChatPlaceholders extends PlaceholderExpansion {
 
             case "socialspy":
                 if (online != null) {
-                    return plugin.getSocialSpyManager().isEnabled(online) ? "true" : "false";
+                    return String.valueOf(plugin.getSocialSpyManager().isEnabled(online));
                 }
                 return "false";
 
             case "thread_active":
                 if (online != null) {
-                    return plugin.getThreadManager().isActive(online) ? "true" : "false";
+                    return String.valueOf(plugin.getThreadManager().isActive(online));
                 }
                 return "false";
 
-            // ===== Статистика (с кэшем) =====
             case "stats_sent":
             case "stats_blocked":
             case "stats_swear":
             case "stats_ads": {
                 if (online == null) return "0";
-                var stats = getStatsCached(online.getUniqueId());
-                return switch (params.toLowerCase()) {
+                StorageManager.PlayerStats stats = statsCached(online.getUniqueId());
+                return switch (key) {
                     case "stats_sent" -> String.valueOf(stats.messagesSent());
                     case "stats_blocked" -> String.valueOf(stats.messagesBlocked());
                     case "stats_swear" -> String.valueOf(stats.swearCaught());
-                    case "stats_ads" -> String.valueOf(stats.adsCaught());
-                    default -> "0";
+                    default -> String.valueOf(stats.adsCaught());
                 };
             }
 
@@ -138,25 +147,49 @@ public class ChatPlaceholders extends PlaceholderExpansion {
     }
 
     /**
-     * Кэш статистики на 10 сек — чтобы не дёргать БД в табе / скорборде.
+     * Значение из кэша; при промахе запускает фоновую загрузку и возвращает
+     * последнее известное значение (или нули).
      */
-    private StorageManager.PlayerStats getStatsCached(UUID uuid) {
+    private StorageManager.PlayerStats statsCached(UUID uuid) {
         CachedStats cached = statsCache.get(uuid);
         if (cached != null && cached.valid()) {
             return cached.stats();
         }
-        StorageManager.PlayerStats fresh = plugin.getStorageManager().getPlayerStats(uuid);
-        statsCache.put(uuid, new CachedStats(fresh, System.currentTimeMillis() + STATS_CACHE_TTL_MS));
-        return fresh;
+
+        refreshStats(uuid);
+        return cached != null ? cached.stats() : new StorageManager.PlayerStats(0, 0, 0, 0);
     }
 
-    /** Сброс кэша для игрока — вызывать после incrementStat, если хочешь мгновенное обновление. */
+    /** Асинхронно обновляет статистику (не чаще одного запроса на игрока за раз). */
+    public void refreshStats(UUID uuid) {
+        if (!plugin.getStorageManager().isAvailable()) return;
+
+        long now = System.currentTimeMillis();
+        Long loadingSince = statsLoading.get(uuid);
+        if (loadingSince != null && now - loadingSince < STATS_CACHE_TTL_MS) return;
+        statsLoading.put(uuid, now);
+
+        Tasks.supply(plugin, "papi-stats", () -> plugin.getStorageManager().getPlayerStats(uuid))
+                .thenAccept(stats -> {
+                    statsLoading.remove(uuid);
+                    if (stats == null) return;
+                    statsCache.put(uuid, new CachedStats(stats,
+                            System.currentTimeMillis() + STATS_CACHE_TTL_MS));
+                });
+    }
+
+    /** Прогрев кэша при входе игрока. */
+    public void preload(Player player) {
+        refreshStats(player.getUniqueId());
+    }
+
     public void invalidateStats(UUID uuid) {
         statsCache.remove(uuid);
+        statsLoading.remove(uuid);
     }
 
-    /** Полный сброс (при reload конфига). */
     public void invalidateAll() {
         statsCache.clear();
+        statsLoading.clear();
     }
 }

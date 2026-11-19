@@ -1,7 +1,7 @@
 package ru.terracraft.chat.command;
 
 import dev.jorel.commandapi.CommandAPICommand;
-import dev.jorel.commandapi.arguments.StringArgument;
+import dev.jorel.commandapi.arguments.UUIDArgument;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.translation.Argument;
 import org.bukkit.Bukkit;
@@ -24,21 +24,14 @@ public class DeleteCommand {
     public void register() {
         new CommandAPICommand("chat_delete")
                 .withPermission("terracraftchat.moderator")
-                .withArguments(new StringArgument("id"))
+                .withArguments(new UUIDArgument("id"))
                 .executesPlayer((sender, args) -> {
                     if (!plugin.getChatConfig().delete().enabled()) {
                         MessageUtil.sendPrefixed(sender, "chat.delete-disabled");
                         return;
                     }
 
-                    String idStr = (String) args.get("id");
-                    UUID id;
-                    try {
-                        id = UUID.fromString(idStr);
-                    } catch (IllegalArgumentException ex) {
-                        MessageUtil.sendPrefixed(sender, "chat.invalid-id");
-                        return;
-                    }
+                    UUID id = (UUID) args.get("id");
 
                     Optional<ChatMessage> opt = plugin.getChatMessageRegistry().get(id);
                     if (opt.isEmpty()) {

@@ -7,7 +7,9 @@ import dev.jorel.commandapi.arguments.PlayerProfileArgument;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.translation.Argument;
 import ru.terracraft.chat.TerraCraftChatPlugin;
+import ru.terracraft.chat.storage.StorageManager;
 import ru.terracraft.chat.util.MessageUtil;
+import ru.terracraft.chat.util.Tasks;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -40,70 +42,83 @@ public class ChatHistoryCommand {
                                 new IntegerArgument("page", 1, 1000)
                         )
                         .executesPlayer((sender, args) -> {
-                            List<PlayerProfile> profiles =
-                                    (List<PlayerProfile>) args.get("target");
-                            if (profiles == null || profiles.isEmpty()) return;
+                            List<PlayerProfile> profiles = asProfiles(args.get("target"));
+                            if (profiles.isEmpty()) return;
 
                             PlayerProfile profile = profiles.get(0);
-                            UUID targetId = profile.getUniqueId();
+                            UUID targetId = profile.getId();
                             String name = profile.getName() != null
                                     ? profile.getName() : targetId.toString();
 
-                            Object limitRaw = args.get("limit");
-                            int limit = limitRaw != null
-                                    ? ((Number) limitRaw).intValue() : 50;
+                            int limit = intArg(args.get("limit"), 50);
+                            int page = intArg(args.get("page"), 1);
 
-                            Object pageRaw = args.get("page");
-                            int page = pageRaw != null
-                                    ? ((Number) pageRaw).intValue() : 1;
-
-                            var rows = plugin.getStorageManager()
-                                    .loadHistoryBySender(targetId, limit);
-
-                            if (rows.isEmpty()) {
-                                MessageUtil.sendPrefixed(sender, "chat.history-empty",
-                                        Argument.string("player", name));
-                                return;
-                            }
-
-                            int totalPages = (rows.size() + PAGE_SIZE - 1) / PAGE_SIZE;
-                            if (page > totalPages) page = totalPages;
-                            int from = (page - 1) * PAGE_SIZE;
-                            int to = Math.min(from + PAGE_SIZE, rows.size());
-
-                            sender.sendMessage(Component.translatable(
-                                    "chat.history-header",
-                                    Argument.string("player", name),
-                                    Argument.string("count", String.valueOf(rows.size())),
-                                    Argument.string("page", String.valueOf(page)),
-                                    Argument.string("pages", String.valueOf(totalPages))
-                            ));
-
-                            for (int i = from; i < to; i++) {
-                                var row = rows.get(i);
-                                String time = TIME_FMT.format(Instant.ofEpochMilli(row.timestamp()));
-                                String date = DATE_FMT.format(Instant.ofEpochMilli(row.timestamp()));
-
-                                sender.sendMessage(Component.translatable(
-                                        "chat.history-entry",
-                                        Argument.string("date", date),
-                                        Argument.string("time", time),
-                                        Argument.string("channel", row.channelId()),
-                                        Argument.string("message", row.rawMessage())
-                                ));
-                            }
-
-                            // Футер пагинации — с подстановкой игрока и номера страницы
-                            if (totalPages > 1) {
-                                int nextPage = page < totalPages ? page + 1 : 1;
-                                sender.sendMessage(Component.translatable(
-                                        "chat.history-footer",
-                                        Argument.string("player", name),
-                                        Argument.string("page", String.valueOf(nextPage))
-                                ));
-                            }
+                            // Выборка истории может быть тяжёлой (до 500 строк) —
+                            // только вне main-потока.
+                            Tasks.supply(plugin, "history",
+                                            () -> plugin.getStorageManager().loadHistoryBySender(targetId, limit))
+                                    .thenAccept(rows -> Tasks.sync(plugin, () -> {
+                                        if (!sender.isOnline() || rows == null) return;
+                                        if (rows.isEmpty()) {
+                                            MessageUtil.sendPrefixed(sender, "chat.history-empty",
+                                                    Argument.string("player", name));
+                                            return;
+                                        }
+                                        sendPage(sender, name, rows, page);
+                                    }));
                         })
                 )
                 .register();
+    }
+
+    private void sendPage(net.kyori.adventure.audience.Audience sender, String name,
+                          List<StorageManager.HistoryRow> rows, int page) {
+        int totalPages = (rows.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+        int current = Math.min(Math.max(page, 1), totalPages);
+        int from = (current - 1) * PAGE_SIZE;
+        int to = Math.min(from + PAGE_SIZE, rows.size());
+
+        sender.sendMessage(Component.translatable(
+                "chat.history-header",
+                Argument.string("player", name),
+                Argument.string("count", String.valueOf(rows.size())),
+                Argument.string("page", String.valueOf(current)),
+                Argument.string("pages", String.valueOf(totalPages))
+        ));
+
+        for (int i = from; i < to; i++) {
+            StorageManager.HistoryRow row = rows.get(i);
+            String time = TIME_FMT.format(Instant.ofEpochMilli(row.timestamp()));
+            String date = DATE_FMT.format(Instant.ofEpochMilli(row.timestamp()));
+
+            sender.sendMessage(Component.translatable(
+                    "chat.history-entry",
+                    Argument.string("date", date),
+                    Argument.string("time", time),
+                    Argument.string("channel", row.channelId()),
+                    Argument.string("message", row.rawMessage())
+            ));
+        }
+
+        if (totalPages > 1) {
+            int nextPage = current < totalPages ? current + 1 : 1;
+            sender.sendMessage(Component.translatable(
+                    "chat.history-footer",
+                    Argument.string("player", name),
+                    Argument.string("page", String.valueOf(nextPage))
+            ));
+        }
+    }
+
+    private static int intArg(Object raw, int fallback) {
+        return raw instanceof Number number ? number.intValue() : fallback;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<PlayerProfile> asProfiles(Object raw) {
+        if (raw instanceof List<?> list) {
+            return (List<PlayerProfile>) list;
+        }
+        return List.of();
     }
 }

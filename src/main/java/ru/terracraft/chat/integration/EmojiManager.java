@@ -1,7 +1,7 @@
 package ru.terracraft.chat.integration;
 
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 
 import java.io.File;
 import java.util.HashMap;
@@ -15,7 +15,7 @@ public class EmojiManager {
     public static final String EMOJI_MARKER_START = "\u0005";
     public static final String EMOJI_MARKER_END = "\u0006";
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private final Map<String, String> emojis = new HashMap<>();
 
     private static final Pattern EMOJI_PATTERN = Pattern.compile(":([a-z0-9_]+):");
@@ -23,7 +23,7 @@ public class EmojiManager {
             "\u0005([a-z0-9_]+)\u0006"
     );
 
-    public EmojiManager(JavaPlugin plugin) {
+    public EmojiManager(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
     }
 

@@ -1,7 +1,7 @@
 package ru.terracraft.chat.command;
 
 import dev.jorel.commandapi.CommandAPICommand;
-import dev.jorel.commandapi.arguments.StringArgument;
+import dev.jorel.commandapi.arguments.UUIDArgument;
 import net.kyori.adventure.text.minimessage.translation.Argument;
 import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.model.ChatMessage;
@@ -21,17 +21,9 @@ public class ThreadReplyCommand {
     public void register() {
         new CommandAPICommand("thread_reply")
                 .withPermission("terracraftchat.thread")
-                .withArguments(new StringArgument("id"))
+                .withArguments(new UUIDArgument("id"))
                 .executesPlayer((sender, args) -> {
-                    String idStr = (String) args.get("id");
-
-                    UUID id;
-                    try {
-                        id = UUID.fromString(idStr);
-                    } catch (IllegalArgumentException ex) {
-                        MessageUtil.sendPrefixed(sender, "chat.invalid-id");
-                        return;
-                    }
+                    UUID id = (UUID) args.get("id");
 
                     Optional<ChatMessage> opt = plugin.getChatMessageRegistry().get(id);
                     if (opt.isEmpty()) {

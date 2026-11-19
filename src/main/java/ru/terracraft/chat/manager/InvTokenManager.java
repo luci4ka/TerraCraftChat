@@ -2,7 +2,7 @@ package ru.terracraft.chat.manager;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 
 import java.util.Map;
 import java.util.UUID;
@@ -17,10 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class InvTokenManager {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private final Map<String, Token> tokens = new ConcurrentHashMap<>();
 
-    public InvTokenManager(JavaPlugin plugin) {
+    public InvTokenManager(TerraCraftChatPlugin plugin) {
         this.plugin = plugin;
 
         // Чистим протухшие токены раз в 30 секунд

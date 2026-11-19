@@ -1,9 +1,9 @@
 package ru.terracraft.chat.manager;
 
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.terracraft.chat.TerraCraftChatPlugin;
 import ru.terracraft.chat.storage.StorageManager;
+import ru.terracraft.chat.util.Tasks;
 
 import java.util.Collections;
 import java.util.Map;
@@ -13,11 +13,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class IgnoreManager {
 
-    private final JavaPlugin plugin;
+    private final TerraCraftChatPlugin plugin;
     private final StorageManager storage;
     private final Map<UUID, Set<UUID>> cache = new ConcurrentHashMap<>();
 
-    public IgnoreManager(JavaPlugin plugin, StorageManager storage) {
+    public IgnoreManager(TerraCraftChatPlugin plugin, StorageManager storage) {
         this.plugin = plugin;
         this.storage = storage;
     }
@@ -25,7 +25,6 @@ public class IgnoreManager {
     /**
      * Загружает игнор-лист игрока АСИНХРОННО.
      * До завершения isIgnoring(uuid, source) возвращает false.
-     * В 99% случаев это незаметно (загрузка < 100 мс).
      */
     public void load(Player player) {
         UUID uuid = player.getUniqueId();
@@ -33,19 +32,18 @@ public class IgnoreManager {
         // Ставим пустой set сразу, чтобы isIgnoring не NPE
         cache.putIfAbsent(uuid, ConcurrentHashMap.newKeySet());
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            try {
-                Set<UUID> loaded = storage.getIgnores(uuid);
+        if (!storage.isAvailable()) return;
 
-                // Если игрок уже вышел — не кладём в кэш
-                if (!player.isOnline()) return;
+        Tasks.supply(plugin, "ignores/" + player.getName(), () -> storage.getIgnores(uuid))
+                .thenAccept(loaded -> {
+                    if (loaded == null) return;
+                    // Если игрок уже вышел — не кладём в кэш
+                    if (!player.isOnline()) return;
 
-                cache.put(uuid, ConcurrentHashMap.newKeySet());
-                cache.get(uuid).addAll(loaded);
-            } catch (Exception e) {
-                plugin.getLogger().warning("IgnoreManager.load async failed: " + e.getMessage());
-            }
-        });
+                    Set<UUID> set = ConcurrentHashMap.newKeySet();
+                    set.addAll(loaded);
+                    cache.put(uuid, set);
+                });
     }
 
     public void unload(Player player) {
@@ -90,7 +88,7 @@ public class IgnoreManager {
 
     public Set<UUID> getIgnoredByUuid(UUID playerId) {
         Set<UUID> ignored = cache.get(playerId);
-        return ignored == null ? Collections.emptySet() : Collections.unmodifiableSet(ignored);
+        return ignored == null ? Collections.emptySet() : Set.copyOf(ignored);
     }
 
     public boolean isIgnoringAny(UUID playerId) {
